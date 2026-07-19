@@ -63,7 +63,12 @@
         "deb"
       ],
       "category": "Development"
-    }
+    },
+    "dmg": {
+      "sign": true,
+      "writeUpdateInfo": false
+    },
+    "afterAllArtifactBuild": "scripts/notarize-dmg.cjs"
   },
   "devDependencies": {
     "@base-ui/react": "^1.6.0",
