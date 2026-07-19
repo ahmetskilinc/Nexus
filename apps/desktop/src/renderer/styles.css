@@ -1,0 +1,479 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+/* Fira Code for the terminal only (the app's `--font-mono` stays Geist Mono).
+   Deliberately the STATIC weights, not the variable build: xterm measures one
+   cell width from a single glyph and then positions every character on that
+   grid, and a variable face measured at one weight but rendered at another drifts
+   — which is what made punctuation look spaced out ("v8. 1. 3"). Fira Code also
+   carries the `calt` ligature set that makes ->, =>, !=, >= render as one glyph. */
+@import "@fontsource/fira-code/400.css";
+@import "@fontsource/fira-code/600.css";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Symbols-only Nerd Font, bundled so shell prompts render their powerline
+   separators and devicons regardless of what the user has installed locally —
+   Geist Mono has none of those glyphs, so without this they show as tofu.
+   Used ONLY as a fallback after Geist Mono (see TerminalPanel), so ordinary text
+   keeps the app's typography and this font supplies just the private-use
+   codepoints. Vendored rather than fetched: the CSP allows `font-src 'self'`
+   only. MIT licensed — see SymbolsNerdFont-LICENSE.txt. */
+@font-face {
+  font-family: "Symbols Nerd Font Mono";
+  src: url("./fonts/SymbolsNerdFontMono-Regular.woff2") format("woff2");
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+/* The app switches themes with `data-theme` on <html> (not prefers-color-scheme),
+   so bind Tailwind's `dark:` variant to it. Streamdown's code blocks and chrome
+   rely on `dark:` utilities to pick their light/dark shiki theme. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Streamdown ships pre-compiled components whose utility classes live outside
+   our src tree; register its dist so Tailwind emits those classes. */
+@source "../../node_modules/streamdown/dist";
+
+@theme {
+  /* shadcn-vocabulary tokens. The neutral ramp is calibrated to the Codex app
+     (sampled): pure-neutral grays, no cool/blue cast. Dark background #181818,
+     raised composer #2d2d2d. Streamdown's chrome uses the same shadcn-style
+     `border-border`/`bg-background` utilities, so it themes for free. */
+  --color-background: #181818;
+  --color-foreground: #ededed;
+  --color-card: #212121;
+  --color-card-foreground: var(--color-foreground);
+  /* Overlay surfaces (tooltips, menus) share the raised-fill gray. */
+  --color-popover: #2d2d2d;
+  --color-popover-foreground: var(--color-foreground);
+  --color-secondary: #2d2d2d;
+  --color-secondary-foreground: var(--color-foreground);
+  /* A recessed surface for chips/pills sitting *inside* a raised card. In dark
+     that reads as "darker than the card"; in light as "grayer than white" —
+     which is why it can't just be `panel` (white == the card in light). */
+  --color-muted: #1e1e1e;
+  --color-muted-foreground: #9e9e9e;
+  /* shadcn's `accent` is the hover/selected fill. Alpha overlay, not an opaque
+     gray: the sidebar is translucent under macOS vibrancy, so an opaque hover
+     fill would stamp a flat gray patch that clashes with the wallpaper-tinted
+     material. A white-alpha tint composits correctly over both the glass and
+     the opaque surfaces this token is used on. */
+  --color-accent: rgba(255, 255, 255, 0.065);
+  --color-accent-foreground: var(--color-foreground);
+  --color-border: #2f2f2f;
+  --color-input: var(--color-border);
+  --color-primary: #ff7a59;
+  --color-primary-foreground: #2b1206;
+  --color-destructive: #f2777a;
+  --color-destructive-foreground: #ffffff;
+  --color-ring: color-mix(in srgb, var(--color-primary) 70%, transparent);
+
+  /* App extensions beyond the shadcn vocabulary. */
+  --color-panel: #1e1e1e;
+  --color-sidebar: #1e1e1e;
+  /* The composer sits higher than cards: Codex renders it #2d2d2d in dark and
+     plain white in light — hence its own token rather than `card`. */
+  --color-composer: #2d2d2d;
+  /* Second border tier, softer than `border`. */
+  --color-border-soft: #242424;
+  /* Alpha divider that tints the (often translucent) surface behind it rather
+     than painting a solid near-theme color, so it never reads as a harsh line. */
+  --color-divider: rgba(255, 255, 255, 0.08);
+  /* Third text tier below muted-foreground — for decorative/de-emphasized text
+     (line numbers, timestamps, placeholders). Lifted from #6b6b6b to clear WCAG
+     AA (~5:1 on the #181818 background) while staying dimmer than muted (#9e9e9e)
+     so the tier hierarchy holds. Text that carries sentences uses muted, not this. */
+  --color-faint: #838383;
+  /* Lighter/darker coral tiers: `primary-soft` doubles as hover fill and
+     lighter coral text, `primary-dim` as focus/approval borders — opacity
+     modifiers on `primary` can't reproduce either. */
+  --color-primary-soft: #ff9e86;
+  --color-primary-dim: #4a3733;
+  /* Brand-mark squircle gradient (the "cloud" logo fill). Warm coral on dark. */
+  --brand-grad-from: #ffb08a;
+  --brand-grad-to: #ff6a44;
+  --color-positive: #6fcf97;
+  --color-warning: #e0b46b;
+  --color-scroll-thumb: #3a3a3a;
+  --color-scroll-thumb-hover: #4a4a4a;
+  --color-cat-explore: #7aa2f7;
+  --color-cat-build: #b48ef2;
+  --color-cat-review: #6fcf97;
+  --color-cat-fix: #f0a35e;
+
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", monospace;
+
+  /* Elevation shadows. Dark uses deep near-black glows; light uses soft,
+     low-alpha cool shadows (heavy black shadows look muddy on a light background).
+     Overridden per-theme below. */
+  --shadow-float: 0 18px 50px rgba(0, 0, 0, 0.45);
+  --shadow-pop: 0 18px 50px rgba(0, 0, 0, 0.5);
+  --shadow-modal: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+:root[data-theme="light"] {
+  /* Codex light: pure-white main, neutral-gray sidebar, white composer. */
+  --color-background: #ffffff;
+  --color-foreground: #1a1a1a;
+  --color-card: #ffffff;
+  --color-popover: #f1f1f2;
+  --color-secondary: #f1f1f2;
+  --color-muted: #eeeeef;
+  --color-muted-foreground: #6d6d6d;
+  --color-accent: rgba(0, 0, 0, 0.05);
+  --color-border: #e7e7e9;
+  --color-primary: #e35a38;
+  --color-primary-foreground: #ffffff;
+  --color-destructive: #d64550;
+
+  --color-panel: #ffffff;
+  --color-sidebar: #f3f3f4;
+  --color-composer: #ffffff;
+  --color-border-soft: #efeff0;
+  --color-divider: rgba(0, 0, 0, 0.1);
+  /* Darkened from #9b9b9b for legibility on the white background while staying
+     lighter (less prominent) than muted (#6d6d6d). Decorative text only; anything
+     that must meet AA uses muted-foreground. */
+  --color-faint: #8a8a8a;
+  --color-primary-soft: #c94a2b;
+  --color-primary-dim: #f7d5cb;
+  /* Deeper coral so white ink on the badge keeps contrast on a light background. */
+  --brand-grad-from: #f0714a;
+  --brand-grad-to: #dc4a22;
+  --color-positive: #1f9d57;
+  --color-warning: #b7791f;
+  --color-scroll-thumb: #d3d3d5;
+  --color-scroll-thumb-hover: #bbbbbe;
+  --color-cat-explore: #3b6fe0;
+  --color-cat-build: #7c5cd6;
+  --color-cat-review: #1f9d57;
+  --color-cat-fix: #d97a2b;
+
+  --shadow-float: 0 6px 20px rgba(28, 39, 66, 0.09);
+  --shadow-pop: 0 10px 28px rgba(28, 39, 66, 0.13);
+  --shadow-modal: 0 20px 50px rgba(28, 39, 66, 0.17);
+}
+
+/* macOS vibrancy: the window is transparent and a native "sidebar" material
+   is painted behind it. We make the body + the sidebar column translucent so
+   the glass shows through only under the left nav; the main content and right
+   panel keep opaque backgrounds. Gated by `data-vibrancy="on"`, which the
+   renderer sets only on darwin — Windows/Linux keep the opaque fallback. */
+:root[data-vibrancy="on"] {
+  --color-sidebar: rgba(30, 30, 30, 0.35);
+}
+:root[data-vibrancy="on"][data-theme="light"] {
+  --color-sidebar: rgba(240, 240, 241, 0.6);
+}
+:root[data-vibrancy="on"] body {
+  background: transparent;
+}
+/* Drop the app-shell fill behind the sidebar column so the material is not
+   occluded; main + right panel paint their own opaque backgrounds. Same for
+   the Settings overlay: its root fill would otherwise sit between the glass
+   and its own translucent sidebar column (the <main> paints itself opaque). */
+:root[data-vibrancy="on"] .app-shell,
+:root[data-vibrancy="on"] .settings-shell,
+/* The boot splash goes fully transparent so the first thing on screen is the
+   bare material with the brand mark floating on it. */
+  :root[data-vibrancy="on"]
+  .splash-shell {
+  background: transparent;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+  body {
+    margin: 0;
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv01", "cv03", "ss03";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+  button {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--color-primary) 30%, transparent);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .app-drag {
+    -webkit-app-region: drag;
+  }
+  .app-no-drag {
+    -webkit-app-region: no-drag;
+  }
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-scroll-thumb) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: var(--color-scroll-thumb);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: var(--color-scroll-thumb-hover);
+    background-clip: padding-box;
+  }
+  .scrollbar-thin::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+/* xterm ships its own stylesheet whose defaults assume a standalone black
+   terminal. Three of them fight the app surface, so they are corrected here
+   rather than by re-theming every token:
+     - `.xterm-viewport` hardcodes `background-color: #000`, which paints over the
+       transparent background set in the xterm theme object (TerminalPanel).
+     - its scrollbar is the platform default, not the app's thin one.
+   Everything colour-related still comes from the theme object; this file only
+   handles what lives outside the canvas. Inset spacing is the wrapper's padding,
+   not xterm's, so FitAddon's measurements stay correct. */
+.nexus-terminal .xterm {
+  height: 100%;
+}
+
+/* Fira Code's ligatures. xterm's DOM renderer (the default here) emits each run
+   of same-styled cells as one text node, so `calt` substitutions form normally —
+   the separate @xterm/addon-ligatures exists to keep cell metrics aligned, and it
+   is NOT usable here: it reaches for system font files through Node's fs, which
+   the sandboxed renderer has no access to. Ligatures are therefore enabled
+   purely in CSS, and stay off for the rest of the app. */
+.nexus-terminal .xterm .xterm-rows {
+  font-variant-ligatures: contextual;
+  font-feature-settings: "calt" 1;
+}
+
+/* Three class selectors, not two: xterm's own `.xterm .xterm-viewport` matches at
+   equal specificity, and its stylesheet is imported from the component rather
+   than here, so relying on source order would be fragile. */
+.nexus-terminal .xterm .xterm-viewport {
+  background-color: transparent;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-scroll-thumb) transparent;
+}
+
+.nexus-terminal .xterm-viewport::-webkit-scrollbar {
+  width: 9px;
+}
+
+.nexus-terminal .xterm-viewport::-webkit-scrollbar-thumb {
+  background: var(--color-scroll-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.nexus-terminal .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: var(--color-scroll-thumb-hover);
+  background-clip: padding-box;
+}
+
+/* The focus outline is drawn by the panel surface instead, so xterm's own
+   never shows as a hard rectangle over the rounded container. */
+.nexus-terminal .xterm-screen:focus,
+.nexus-terminal .xterm textarea:focus {
+  outline: none;
+}
+
+/* Assistant markdown is rendered by Streamdown, which ships its own per-element
+   typography as utility classes. We only set the container baseline — size,
+   rhythm, wrapping, and token-based link color — and let Streamdown own the rest
+   so its styling isn't fought by higher-specificity element rules. */
+.nexus-prose {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--color-foreground);
+  overflow-wrap: anywhere;
+}
+.nexus-prose > *:first-child {
+  margin-top: 0;
+}
+.nexus-prose > *:last-child {
+  margin-bottom: 0;
+}
+.nexus-prose a {
+  color: var(--color-primary);
+}
+
+/* Durable Plan/Research artifacts use a calmer, document-like hierarchy than
+   streaming chat. Keep every selector under this variant so ordinary assistant
+   messages retain Streamdown's compact conversational rhythm. */
+.nexus-artifact-prose {
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--color-foreground);
+}
+.nexus-artifact-prose :is(h1, h2, h3, h4) {
+  scroll-margin-top: 1rem;
+  break-after: avoid;
+  text-wrap: balance;
+  letter-spacing: -0.015em;
+}
+.nexus-artifact-prose h1 {
+  margin-top: 2rem;
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--color-border-soft);
+  font-size: 1.35rem;
+  line-height: 1.25;
+  font-weight: 650;
+}
+.nexus-artifact-prose h2 {
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+  padding-top: 0.1rem;
+  font-size: 1.12rem;
+  line-height: 1.35;
+  font-weight: 650;
+}
+.nexus-artifact-prose h3 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.55rem;
+  font-size: 0.98rem;
+  line-height: 1.4;
+  font-weight: 620;
+}
+.nexus-artifact-prose h4 {
+  margin-top: 1.25rem;
+  margin-bottom: 0.45rem;
+  font-size: 0.88rem;
+  font-weight: 620;
+  color: var(--color-muted-foreground);
+}
+.nexus-artifact-prose :is(p, ul, ol, blockquote, table, pre) {
+  margin-top: 0.8rem;
+  margin-bottom: 0.8rem;
+}
+.nexus-artifact-prose :is(ul, ol) {
+  padding-left: 1.35rem;
+}
+.nexus-artifact-prose li {
+  margin-block: 0.3rem;
+  padding-left: 0.15rem;
+}
+.nexus-artifact-prose li::marker {
+  color: var(--color-primary-soft);
+  font-weight: 600;
+}
+.nexus-artifact-prose blockquote {
+  border-left: 3px solid var(--color-primary-dim);
+  border-radius: 0 0.5rem 0.5rem 0;
+  background: color-mix(in srgb, var(--color-card) 75%, transparent);
+  padding: 0.75rem 0.9rem;
+  color: var(--color-muted-foreground);
+}
+.nexus-artifact-prose table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 0.65rem;
+}
+.nexus-artifact-prose :is(th, td) {
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--color-border-soft);
+  text-align: left;
+  vertical-align: top;
+}
+.nexus-artifact-prose th {
+  background: var(--color-card);
+  font-size: 0.75rem;
+  font-weight: 620;
+  color: var(--color-muted-foreground);
+}
+.nexus-artifact-prose hr {
+  margin-block: 1.75rem;
+  border-color: var(--color-border-soft);
+}
+.nexus-artifact-prose > :first-child {
+  margin-top: 0;
+}
+.nexus-artifact-prose > :last-child {
+  margin-bottom: 0;
+}
+
+/* Fenced code is rendered by our own CodeBlock component (see CodeBlock.tsx),
+   which drives shiki with a light/dark theme pair. shiki emits `--shiki-*` CSS
+   vars for both themes plus light as the base color; under our `data-theme`
+   toggle we swap every token to its dark value. shiki also stamps its own page
+   background on `.shiki` — we drop it so the tool-card surface shows through. */
+.nexus-code .shiki {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  /* shiki stamps the theme's page background inline on this element; override it
+     so the tool-card surface shows through. Inline styles only yield to
+     !important, hence the suppression. */
+  /* biome-ignore lint/complexity/noImportantStyles: overrides shiki's inline background */
+  background: transparent !important;
+}
+:root[data-theme="dark"] .nexus-code .shiki,
+:root[data-theme="dark"] .nexus-code .shiki span {
+  /* Each token carries its light color inline (`defaultColor: "light"`); swap to
+     the dark palette shiki emitted as `--shiki-dark`. Inline color only yields to
+     !important. Font style/weight are theme-independent, so no override needed. */
+  /* biome-ignore lint/complexity/noImportantStyles: overrides shiki's inline token color */
+  color: var(--shiki-dark) !important;
+}
+
+/* Line numbers via a counter on shiki's per-line `.line` spans. The number is a
+   non-selectable pseudo-element, so copy/download still yield clean source, and
+   shiki's `<pre>` whitespace (the `\n` between lines) is left untouched — no
+   display override that would turn those newlines into stray rows. */
+.nexus-code .shiki code {
+  counter-reset: sd-line;
+}
+.nexus-code .shiki .line::before {
+  content: counter(sd-line);
+  counter-increment: sd-line;
+  display: inline-block;
+  width: 1.75rem;
+  margin-right: 1rem;
+  text-align: right;
+  color: var(--color-faint);
+  user-select: none;
+}
+
+@theme inline {
+  /* The nova preset's component styles reference --font-heading. Colors and
+     radii intentionally NOT remapped here: the app's own @theme above is the
+     single source of truth (shadcn init's oklch defaults were removed). */
+  --font-heading: var(--font-sans);
+}

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened-runtime entitlements for the Electron app (required for notarization).
+  Credentials are encrypted with Electron safeStorage, which uses the app's own
+  keychain-stored key via Chromium os_crypt — that path needs NO
+  keychain-access-groups entitlement (that entitlement is only for shared
+  access groups), so none is declared.
+
+  Deliberately minimal: allow-jit alone, because every additional entitlement here
+  weakens the hardened runtime for the whole app process.
+
+  Two entitlements were removed and must NOT be re-added without recording the
+  module that forced them:
+
+  - allow-unsigned-executable-memory: redundant alongside allow-jit on current
+    Electron, which uses the MAP_JIT path that allow-jit covers.
+  - disable-library-validation: the broadest of the three — it lets ANY unsigned
+    dylib load into the app process. It exists for native modules, but node-pty
+    ships prebuilt .node binaries that electron-builder signs with this app's own
+    identity, so library validation should accept them.
+
+  If a packaged build fails to launch, or the terminal panel goes dead (node-pty
+  failing to load is the expected symptom), re-add the ONE entitlement that fixes
+  it and note here which module needed it.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+</dict>
+</plist>

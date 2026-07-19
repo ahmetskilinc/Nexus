@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Nexus app icon. The mark is the same cloud-squircle + terminal-prompt
+       geometry as src/renderer/components/BrandMark.tsx, re-plotted onto Apple's
+       Big Sur grid: a 824x824 tile centred in the 1024 canvas (100,100 origin,
+       ~185px corner radius) so macOS masks it correctly and the dock spacing
+       matches first-party apps. Colors are the literal brand token values from
+       styles.css (the brand-grad-from/to coral ramp) since an icon file has no
+       CSS context to resolve variables from. -->
+  <defs>
+    <linearGradient id="tile" x1="512" y1="100" x2="512" y2="924" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#232323"/>
+      <stop offset="1" stop-color="#141414"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="4" y1="3.5" x2="20" y2="20.5" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffb08a"/>
+      <stop offset="1" stop-color="#ff6a44"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="26" stdDeviation="44" flood-color="#ff7a59" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <!-- Tile: dark field, plus a hairline top highlight so the icon keeps an edge
+       against a dark dock/wallpaper. -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)"/>
+  <rect x="103" y="103" width="818" height="818" rx="182" fill="none"
+        stroke="#ffffff" stroke-opacity="0.07" stroke-width="6"/>
+
+  <!-- Mark, scaled from the 24-unit BrandMark viewBox: 12,12 centre -> 512,512
+       at 27.6x, giving a ~470px glyph inside the 824px tile (Apple's grid keeps
+       the artwork well inside the mask). -->
+  <g transform="translate(180.8 180.8) scale(27.6)" filter="url(#glow)">
+    <path d="M12 3.5C16 3.5 20.5 4 20.5 12C20.5 20 16 20.5 12 20.5C8 20.5 3.5 20 3.5 12C3.5 4 8 3.5 12 3.5Z"
+          fill="url(#mark)"/>
+    <path d="M8.5 9.5L11 12L8.5 14.5" fill="none" stroke="#2b1206"
+          stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M12.75 14.5H15.5" fill="none" stroke="#2b1206"
+          stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

@@ -1,0 +1,40 @@
+# OS
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*~
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Logs / coverage
+*.log
+npm-debug.log*
+coverage/
+*.profraw
+
+# Bun / Node
+node_modules/
+.bun/
+
+# Turborepo
+.turbo/
+
+# Desktop build (Vite, esbuild, electron-builder)
+apps/desktop/dist/
+apps/desktop/release/
+*.dmg
+*.blockmap
+*.AppImage
+*.deb
+*.exe
+*.nsis
+
