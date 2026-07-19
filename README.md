@@ -83,6 +83,22 @@ All signing is opt-in via environment variables, so builds still work without a 
 
 Without a Developer ID, signing and notarization are skipped and the package remains local-only.
 
+### Releases (GitHub Actions)
+
+`.github/workflows/release.yml` runs on every push to `main`: typecheck and
+tests always; when `apps/desktop/package.json` holds a version with no
+`v<version>` release yet, it also builds, signs, notarizes, and publishes the
+dmg to GitHub Releases — so bumping the version is what ships. Required
+repository secrets:
+
+- `CSC_LINK` — the Developer ID Application certificate as base64
+  (`base64 -i certificate.p12 | pbcopy` after exporting it from Keychain
+  Access with a password)
+- `CSC_KEY_PASSWORD` — the export password for that .p12
+- `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` — notarization
+  credentials (same ones used locally)
+- `HUGEICONS_TOKEN` — Hugeicons Pro registry token for `bun install`
+
 ## Runtime protocol
 
 The main process forks `dist/runtime/index.js` as an Electron `utilityProcess` and exchanges typed messages over its port (see `packages/protocol/src/rpc.ts`): requests `{kind:"request", id, method, params}`, responses `{kind:"response", id, ok, result | error}`, and request-correlated events `{kind:"event", id, event}`. Long-running methods (`agent.run`, `oauth.signin`) stream events before their final response and can be aborted with the `cancel` method. The runtime calls back to the main process only for `safeStorage` encrypt/decrypt (`host-request`/`host-response`).
