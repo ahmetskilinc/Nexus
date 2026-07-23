@@ -4,13 +4,35 @@ import * as path from "node:path";
 import { RuntimeError } from "@nexus/protocol";
 import { isWorkspaceRelative } from "../git";
 
+export type MutationAudit = {
+  callId: string;
+  tool: string;
+  appliedAt: number;
+};
+
+/// One reversible mutation in a bounded checkpoint history. Content remains
+/// local to the checkpoint; provider responses, command output, and raw tool
+/// arguments are never stored here.
+export type CheckpointMutation = {
+  before: string | null;
+  after: string | null;
+  audit: MutationAudit;
+};
+
 export type CheckpointEntry = {
   path: string;
   /// Pre-image, or null when the file did not exist before the run.
   before: string | null;
   /// Post-image, or null when the mutation deleted the file.
   after: string | null;
+  /// Secret-free provenance for the most recent mutation of this path.
+  audit?: MutationAudit;
+  /// Most-recent-first reversible mutations for this path. Older checkpoints
+  /// have no history and continue to support whole-file restore.
+  history?: CheckpointMutation[];
 };
+
+export const MAX_MUTATIONS_PER_FILE = 20;
 
 export type Checkpoint = {
   id: string;
@@ -127,13 +149,51 @@ export function readCheckpoint(
     if (entry.after != null && typeof entry.after !== "string") {
       throw malformed;
     }
+    const audit = parseAudit(entry.audit);
+    const history = Array.isArray(entry.history)
+      ? entry.history
+          .flatMap((value) => {
+            if (typeof value !== "object" || value === null) return [];
+            const mutation = value as Record<string, unknown>;
+            const mutationAudit = parseAudit(mutation.audit);
+            if (
+              !mutationAudit ||
+              (mutation.before != null &&
+                typeof mutation.before !== "string") ||
+              (mutation.after != null && typeof mutation.after !== "string")
+            )
+              return [];
+            return [
+              {
+                before: (mutation.before as string | null | undefined) ?? null,
+                after: (mutation.after as string | null | undefined) ?? null,
+                audit: mutationAudit,
+              },
+            ];
+          })
+          .slice(0, MAX_MUTATIONS_PER_FILE)
+      : undefined;
     entries.push({
       path: entry.path,
       before: (entry.before as string | null | undefined) ?? null,
       after: (entry.after as string | null | undefined) ?? null,
+      audit,
+      history,
     });
   }
   return { id: record.id, createdAt: record.createdAt, entries };
+}
+
+function parseAudit(value: unknown): MutationAudit | undefined {
+  const record =
+    typeof value === "object" && value !== null
+      ? (value as Record<string, unknown>)
+      : undefined;
+  return typeof record?.callId === "string" &&
+    typeof record.tool === "string" &&
+    typeof record.appliedAt === "number"
+    ? { callId: record.callId, tool: record.tool, appliedAt: record.appliedAt }
+    : undefined;
 }
 
 /// Resolves a checkpoint entry's workspace path, refusing anything that could

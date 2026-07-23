@@ -87,6 +87,43 @@ export async function restoreCheckpoint(
   return restored;
 }
 
+/// Reverts only the most recent recorded mutation for one file. Unlike a
+/// whole-file checkpoint restore, earlier mutations in the same run remain
+/// available afterwards. Old checkpoints without mutation history fail closed.
+export async function restoreLatestMutation(
+  workspace: string,
+  checkpointId: string,
+  relativePath: string,
+  options?: StoreOptions,
+): Promise<void> {
+  const checkpoint = readCheckpoint(workspace, checkpointId, options);
+  const entry = checkpoint.entries.find((item) => item.path === relativePath);
+  const mutation = entry?.history?.[0];
+  if (!entry || !mutation) {
+    throw RuntimeError.msg(
+      `${relativePath} has no individual mutation history to restore.`,
+    );
+  }
+  const target = safeTarget(workspace, relativePath);
+  const current = isFile(target) ? fs.readFileSync(target, "utf8") : null;
+  if (current !== mutation.after) {
+    throw RuntimeError.msg(
+      `${relativePath} changed after this mutation; it was not overwritten.`,
+    );
+  }
+  if (mutation.before === null) {
+    if (fs.existsSync(target)) fs.unlinkSync(target);
+  } else {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, mutation.before);
+  }
+  entry.history = entry.history?.slice(1);
+  const next = entry.history?.[0];
+  entry.after = next ? next.after : entry.before;
+  entry.audit = next?.audit;
+  writeCheckpoint(workspace, checkpoint, options);
+}
+
 function isFile(target: string): boolean {
   try {
     return fs.statSync(target).isFile();

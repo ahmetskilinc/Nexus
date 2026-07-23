@@ -6,6 +6,9 @@ import type { TodoItem } from "./messages";
 /// with `runtimeEventSchema` below — is the runtime→app contract.
 export type RuntimeEvent =
   | { type: "assistant_text"; text: string }
+  // A transient provider request was retried before any stream content was
+  // received. It is informational only; no provider/tool action is replayed.
+  | { type: "provider_retry"; attempt: number; delayMs: number; reason: string }
   | {
       type: "tool_call";
       id: string;
@@ -93,6 +96,12 @@ export const runtimeEventSchema: z.ZodType<
   unknown
 > = z.union([
   z.object({ type: z.literal("assistant_text"), text: z.string() }),
+  z.object({
+    type: z.literal("provider_retry"),
+    attempt: z.number().int().min(1),
+    delayMs: z.number().nonnegative(),
+    reason: z.string(),
+  }),
   z.object({
     type: z.literal("tool_call"),
     id: z.string(),

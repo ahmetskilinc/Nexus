@@ -14,6 +14,12 @@ The app can:
 
 Provider requests are made directly from the runtime to the provider; no credentials are sent to Nexus services because Nexus has no backend.
 
+## Product and privacy policy
+
+Nexus is currently designed for individual developers. It is local-first: the selected workspace, application state, and encrypted credentials stay on the user's machine, while enabled provider, web, Git, and MCP features contact their configured external destinations directly. Nexus sends no analytics, crash reports, or diagnostic data to Nexus-operated services. Diagnostics will be manual local exports with secret redaction.
+
+macOS is the primary supported platform. Windows and Linux packaging targets are experimental until their CI release, installation, and update paths are implemented. Details and the architectural decisions that guide the production roadmap live in [`docs/adr`](docs/adr).
+
 ## Layout
 
 ```

@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { CheckpointRecorder } from "./recorder";
-import { restoreCheckpoint } from "./restore";
+import { restoreCheckpoint, restoreLatestMutation } from "./restore";
 import { safeTarget, storePath } from "./store";
 
 const created: string[] = [];
@@ -145,6 +145,53 @@ test("restore recreates deleted files and deletes created ones", async () => {
   expect(fs.readFileSync(path.join(workspace, "deleted.txt"), "utf8")).toBe(
     "old content",
   );
+});
+
+test("restoreLatestMutation reverts one step and retains earlier history", async () => {
+  const { workspace, options } = fixture("nexus-checkpoint-step-undo-test-");
+  fs.writeFileSync(path.join(workspace, "file.txt"), "v3");
+  const recorder = new CheckpointRecorder(workspace, "step", options);
+  recorder.record([{ path: "file.txt", before: "v1", after: "v2" }], {
+    callId: "call-1",
+    tool: "edit_file",
+    appliedAt: 1,
+  });
+  recorder.record([{ path: "file.txt", before: "v2", after: "v3" }], {
+    callId: "call-2",
+    tool: "edit_file",
+    appliedAt: 2,
+  });
+
+  await restoreLatestMutation(workspace, "step", "file.txt", options);
+  expect(fs.readFileSync(path.join(workspace, "file.txt"), "utf8")).toBe("v2");
+  await restoreLatestMutation(workspace, "step", "file.txt", options);
+  expect(fs.readFileSync(path.join(workspace, "file.txt"), "utf8")).toBe("v1");
+});
+
+test("recorder stores secret-free mutation provenance", () => {
+  const { workspace, options } = fixture("nexus-checkpoint-audit-test-");
+  const recorder = new CheckpointRecorder(workspace, "audit", options);
+  recorder.record([{ path: "file.txt", before: "before", after: "after" }], {
+    callId: "call-1",
+    tool: "edit_file",
+    appliedAt: 123,
+  });
+  const stored = JSON.parse(
+    fs.readFileSync(storePath(workspace, "audit", options), "utf8"),
+  );
+  expect(stored.entries[0]).toEqual({
+    path: "file.txt",
+    before: "before",
+    after: "after",
+    audit: { callId: "call-1", tool: "edit_file", appliedAt: 123 },
+    history: [
+      {
+        before: "before",
+        after: "after",
+        audit: { callId: "call-1", tool: "edit_file", appliedAt: 123 },
+      },
+    ],
+  });
 });
 
 test("safe target rejects escapes, absolute paths, and symlinks", () => {

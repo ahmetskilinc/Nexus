@@ -32,6 +32,7 @@ import {
 } from "./handlers/models";
 import {
   handleCheckpointRestore,
+  handleCheckpointRestoreLatestMutation,
   handleContextPreview,
   handleWorkspaceChanges,
   handleWorkspaceCommit,
@@ -123,6 +124,8 @@ export class NexusCore implements RuntimeCore {
         return handleWorkspacePush(params);
       case "checkpoint.restore":
         return handleCheckpointRestore(params);
+      case "checkpoint.restoreLatestMutation":
+        return handleCheckpointRestoreLatestMutation(params);
       case "context.preview":
         return handleContextPreview(params);
       case "memory.list":

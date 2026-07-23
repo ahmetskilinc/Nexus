@@ -90,6 +90,8 @@ export function ChatPane({
     if (lastUser?.type === "user") setPrompt(lastUser.text);
   }
 
+  const canRetryInterrupted = session.recovery?.status === "interrupted";
+
   return (
     // Capture-phase so a click anywhere (transcript, composer, menus) focuses
     // the pane before it does anything else; the op no-ops when already
@@ -106,6 +108,13 @@ export function ChatPane({
         clearRight={topClearRight}
       />
       <div className="relative flex min-h-0 flex-1 flex-col">
+        {session.recovery?.status === "interrupted" ? (
+          <div className="mx-auto mt-2 w-full max-w-[760px] rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-muted-foreground">
+            The previous run was interrupted. Nexus did not replay any provider,
+            command, file, or MCP action automatically. Review the transcript,
+            then retry the last prompt if appropriate.
+          </div>
+        ) : null}
         <ChatStage
           key={session.id}
           session={session}
@@ -120,7 +129,7 @@ export function ChatPane({
           onSuggestion={setPrompt}
           onAtBottomChange={setAtBottom}
         />
-        {canRetry ? (
+        {canRetry || canRetryInterrupted ? (
           <button
             type="button"
             onClick={retry}

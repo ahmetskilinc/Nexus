@@ -52,6 +52,12 @@ const api = {
     ipcRenderer.invoke("checkpoint:restore", checkpointId, paths) as Promise<
       string[]
     >,
+  restoreLatestMutation: (checkpointId: string, relativePath: string) =>
+    ipcRenderer.invoke(
+      "checkpoint:restore-latest-mutation",
+      checkpointId,
+      relativePath,
+    ) as Promise<void>,
   contextPreview: () =>
     ipcRenderer.invoke("context:preview") as Promise<{
       instructionSource?: string;

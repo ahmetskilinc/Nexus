@@ -85,6 +85,25 @@ export class Store {
     } catch {
       this.state = { ...EMPTY_STATE };
     }
+    // A process cannot safely infer whether the provider or a side-effectful
+    // tool completed after an unclean shutdown. Preserve the marker for an
+    // explicit user decision; never replay work automatically on launch.
+    const recoveredAt = new Date().toISOString();
+    const sessions = this.state.sessions.map((session) =>
+      session.recovery?.status === "in_progress"
+        ? {
+            ...session,
+            recovery: { ...session.recovery, status: "interrupted" as const },
+            updatedAt: recoveredAt,
+          }
+        : session,
+    );
+    if (
+      sessions.some((session, index) => session !== this.state.sessions[index])
+    ) {
+      this.state = { ...this.state, sessions };
+      await this.save(this.state);
+    }
     return this.snapshot();
   }
 

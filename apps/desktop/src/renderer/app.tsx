@@ -340,6 +340,29 @@ export function App() {
     }
   }
 
+  /// Reverts only a file's most recent agent mutation. The runtime verifies the
+  /// post-image first, so edits made after that mutation are never overwritten.
+  async function restoreLatestMutation(filePath: string) {
+    const checkpoint = current?.checkpoint;
+    if (!checkpoint || checkpoint.restoredAt) return;
+    if (
+      !window.confirm(
+        `Undo the latest agent mutation to ${filePath}? Later edits will not be overwritten.`,
+      )
+    )
+      return;
+    try {
+      await window.nexus.restoreLatestMutation(checkpoint.id, filePath);
+      await reloadFiles();
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Could not undo the latest mutation.",
+      );
+    }
+  }
+
   /// Reverts a single file from the run checkpoint. The runtime refuses if the
   /// file changed since the run, so user edits are never overwritten.
   async function restoreCheckpointFile(filePath: string) {
@@ -599,7 +622,13 @@ export function App() {
                       ? current.checkpoint.files
                       : []
                   }
+                  checkpointEntries={
+                    current?.checkpoint && !current.checkpoint.restoredAt
+                      ? (current.checkpoint.entries ?? [])
+                      : []
+                  }
                   onRestoreCheckpoint={restoreCheckpoint}
+                  onRestoreLatestMutation={restoreLatestMutation}
                   onRestoreCheckpointFile={restoreCheckpointFile}
                   codeTheme={codeTheme}
                   onClose={() => setRightOpen(false)}

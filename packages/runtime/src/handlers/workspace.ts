@@ -9,6 +9,7 @@ import {
   listMemories,
   pushCommits,
   restoreCheckpoint,
+  restoreLatestMutation,
   stageFiles,
   unstageFiles,
   workspaceChanges,
@@ -89,6 +90,14 @@ export async function handleCheckpointRestore(params: unknown) {
     paths = raw;
   }
   return { files: await restoreCheckpoint(path, checkpointId, paths) };
+}
+
+export async function handleCheckpointRestoreLatestMutation(params: unknown) {
+  const path = stringParam(params, "path");
+  const checkpointId = stringParam(params, "checkpointId");
+  const relativePath = stringParam(params, "relativePath");
+  await restoreLatestMutation(path, checkpointId, relativePath);
+  return {};
 }
 
 export async function handleContextPreview(params: unknown) {

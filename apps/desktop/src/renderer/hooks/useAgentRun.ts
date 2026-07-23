@@ -6,7 +6,6 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createId } from "../lib/format";
 import {
-  appendItem,
   applyEvent,
   dedupeAttachments,
   finishRun,
@@ -148,7 +147,13 @@ export function useAgentRun({
         const updatedAt = new Date().toISOString();
         setState(
           (current) =>
-            current && appendItem(current, run.sessionId, item, updatedAt),
+            current &&
+            updateSession(current, run.sessionId, (session) => ({
+              ...session,
+              recovery: undefined,
+              transcript: [...session.transcript, item],
+              updatedAt,
+            })),
         );
       }),
     ];
@@ -198,6 +203,7 @@ export function useAgentRun({
       updatedAt: new Date().toISOString(),
       transcript: [...item.transcript, userItem],
       history: [...item.history, { type: "user", text: historyText }],
+      recovery: { startedAt: new Date().toISOString(), status: "in_progress" },
     }));
     setState(() => updated);
     setError(undefined);
@@ -225,6 +231,16 @@ export function useAgentRun({
           appState.customInstructions?.[session.workspacePath],
       })
       .then((runId) => {
+        setState((appState) =>
+          appState
+            ? updateSession(appState, sessionId, (session) => ({
+                ...session,
+                recovery: session.recovery
+                  ? { ...session.recovery, runId }
+                  : session.recovery,
+              }))
+            : appState,
+        );
         setActiveRuns((current) => {
           const run = current[sessionId];
           if (!run || run.runId) return current;

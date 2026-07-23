@@ -99,6 +99,26 @@ describe("applyEvent", () => {
     expect(transcript(next, "a")[1]?.kind).toBe("assistant");
   });
 
+  test("provider_retry adds an informational recovery marker", () => {
+    const next = applyEvent(
+      state(),
+      "a",
+      {
+        type: "provider_retry",
+        attempt: 1,
+        delayMs: 500,
+        reason: "Provider temporarily unavailable (HTTP 429)",
+      },
+      "item-1",
+      LATER,
+    );
+    expect(transcript(next, "a")[0]).toMatchObject({
+      kind: "info",
+      title: "Retrying provider (1)",
+      detail: "Provider temporarily unavailable (HTTP 429). Retrying in 1s.",
+    });
+  });
+
   test("tool_result matches by toolCallId and fills result", () => {
     const withTool = applyEvent(
       state(),
@@ -417,6 +437,19 @@ describe("finishRun", () => {
     const updated = next.sessions.find((item) => item.id === "a");
     expect(updated?.usage).toEqual({ inputTokens: 10, outputTokens: 5 });
     expect(updated?.costUsd).toBeCloseTo(0.01);
+  });
+
+  test("finishRun clears the active-run recovery marker", () => {
+    const input = state({
+      sessions: [
+        session("a", {
+          recovery: { runId: "run-1", startedAt: NOW, status: "in_progress" },
+        }),
+        session("b"),
+      ],
+    });
+    const next = finishRun(input, "a", { messages: [] }, LATER);
+    expect(next.sessions[0]?.recovery).toBeUndefined();
   });
 });
 

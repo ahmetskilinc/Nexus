@@ -388,6 +388,18 @@ function registerIpc() {
       return Array.isArray(result.files) ? (result.files as string[]) : [];
     },
   );
+  ipcMain.handle(
+    "checkpoint:restore-latest-mutation",
+    async (_event, checkpointId: string, relativePath: string) => {
+      const state = store.snapshot();
+      const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
+      await runtime.request("checkpoint.restoreLatestMutation", {
+        path: workspacePath,
+        checkpointId,
+        relativePath,
+      }).response;
+    },
+  );
   ipcMain.handle("context:preview", async () => {
     const state = store.snapshot();
     const workspacePath = requireWorkspace(state.workspacePath ?? "", state);

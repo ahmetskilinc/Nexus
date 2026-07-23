@@ -133,7 +133,15 @@ export async function stream(
 ): Promise<AssembledMessage> {
   const parser = new SseParser();
   const assembler = new ContentAssembler();
-  for await (const chunk of openSse(fetchFn, url, headers, body, signal)) {
+  for await (const chunk of openSse(
+    fetchFn,
+    url,
+    headers,
+    body,
+    signal,
+    undefined,
+    emitter,
+  )) {
     for (const event of parser.feed(chunk)) {
       const terminal = assembler.onEvent(event, emitter);
       if (terminal) {

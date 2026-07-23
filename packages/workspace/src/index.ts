@@ -3,11 +3,17 @@ export {
   CheckpointRecorder,
   type MutationPlan,
 } from "./checkpoint/recorder";
-export { restoreCheckpoint } from "./checkpoint/restore";
-export type {
-  Checkpoint,
-  CheckpointEntry,
-  StoreOptions,
+export {
+  restoreCheckpoint,
+  restoreLatestMutation,
+} from "./checkpoint/restore";
+export {
+  MAX_MUTATIONS_PER_FILE,
+  type Checkpoint,
+  type CheckpointEntry,
+  type CheckpointMutation,
+  type MutationAudit,
+  type StoreOptions,
 } from "./checkpoint/store";
 export {
   branchSync,

@@ -198,7 +198,7 @@ export class ToolRunner {
         if (!approved) return "The user declined this edit.";
         try {
           const output = await applyMutation(this.options.workspace, plan);
-          checkpoint.record(entries);
+          checkpoint.record(entries, { callId: id, tool: name });
           return output;
         } catch (error) {
           return toolFailure(error);

@@ -283,6 +283,20 @@ export function applyEvent(
             ];
       return { ...session, transcript, updatedAt };
     });
+  if (event.type === "provider_retry")
+    return updateSession(state, sessionId, (session) => ({
+      ...session,
+      transcript: [
+        ...session.transcript,
+        {
+          id: itemId,
+          kind: "info",
+          title: `Retrying provider (${event.attempt})`,
+          detail: `${event.reason}. Retrying in ${Math.ceil(event.delayMs / 1000)}s.`,
+        },
+      ],
+      updatedAt,
+    }));
   if (event.type === "tool_call") {
     // Mutation calls grow the session's change set (for the Review panel); the
     // paths are recorded when the call is made. Declined edits that leave the
@@ -475,6 +489,7 @@ export function finishRun(
         ? (session.costUsd ?? 0) + costUsd
         : session.costUsd,
     checkpoint: checkpoint ?? session.checkpoint,
+    recovery: undefined,
     updatedAt,
   }));
 }
@@ -492,7 +507,22 @@ function parseCheckpoint(value: unknown): Session["checkpoint"] | undefined {
     (path): path is string => typeof path === "string",
   );
   if (files.length === 0) return undefined;
-  return { id: raw.id, createdAt: raw.createdAt, files };
+  const entries = Array.isArray(raw.entries)
+    ? raw.entries.flatMap((value) => {
+        if (!value || typeof value !== "object") return [];
+        const entry = value as Record<string, unknown>;
+        if (typeof entry.path !== "string") return [];
+        return [
+          {
+            path: entry.path,
+            tool: typeof entry.tool === "string" ? entry.tool : undefined,
+            appliedAt:
+              typeof entry.appliedAt === "number" ? entry.appliedAt : undefined,
+          },
+        ];
+      })
+    : undefined;
+  return { id: raw.id, createdAt: raw.createdAt, files, entries };
 }
 
 function parseUsage(value: unknown): Usage | undefined {

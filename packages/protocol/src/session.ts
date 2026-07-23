@@ -49,7 +49,18 @@ export type RunCheckpoint = {
   id: string;
   createdAt: number;
   files: string[];
+  /// Secret-free provenance for the latest mutation of each restoreable file.
+  entries?: Array<{ path: string; tool?: string; appliedAt?: number }>;
   restoredAt?: string;
+};
+
+/// A small, secret-free marker persisted while a run is active. It lets Nexus
+/// explain an interrupted run after restart without ever replaying a possibly
+/// side-effectful provider, command, mutation, or MCP request automatically.
+export type RunRecovery = {
+  runId?: string;
+  startedAt: string;
+  status: "in_progress" | "interrupted";
 };
 
 export type Session = {
@@ -85,4 +96,7 @@ export type Session = {
   changedFiles?: string[];
   /// Latest reversible mutation checkpoint produced by a completed run.
   checkpoint?: RunCheckpoint;
+  /// Active work marker, converted to `interrupted` on the next app launch.
+  /// This contains no tool arguments, output, credentials, or source content.
+  recovery?: RunRecovery;
 };

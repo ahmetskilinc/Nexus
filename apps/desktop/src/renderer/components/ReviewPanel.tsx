@@ -34,7 +34,9 @@ export function ReviewPanel({
   onPush,
   canRestoreCheckpoint,
   checkpointFiles,
+  checkpointEntries,
   onRestoreCheckpoint,
+  onRestoreLatestMutation,
   onRestoreCheckpointFile,
   codeTheme,
   onClose,
@@ -52,7 +54,10 @@ export function ReviewPanel({
   canRestoreCheckpoint: boolean;
   /// Files still revertible from the last run's checkpoint (empty when none).
   checkpointFiles: string[];
+  /// Secret-free provenance for checkpoint files, keyed by path.
+  checkpointEntries: Array<{ path: string; tool?: string; appliedAt?: number }>;
   onRestoreCheckpoint: () => Promise<void>;
+  onRestoreLatestMutation: (path: string) => Promise<void>;
   onRestoreCheckpointFile: (path: string) => Promise<void>;
   codeTheme: string;
   onClose: () => void;
@@ -140,6 +145,9 @@ export function ReviewPanel({
 
   const shown = entries.filter((entry) => entry.patch.trim());
   const anyLoading = entries.some((entry) => entry.loading);
+  const checkpointByPath = new Map(
+    checkpointEntries.map((entry) => [entry.path, entry]),
+  );
 
   return (
     <m.aside
@@ -222,33 +230,62 @@ export function ReviewPanel({
               changed since the run is left untouched.
             </p>
             <ul className="pb-1">
-              {checkpointFiles.map((path) => (
-                <li
-                  key={path}
-                  className="group flex items-center gap-2 px-3 py-1.5 hover:bg-accent"
-                >
-                  <FileIcon
-                    size={12}
-                    className="shrink-0 text-muted-foreground"
-                  />
-                  <span
-                    className="min-w-0 flex-1 truncate text-[11px] text-foreground"
-                    title={path}
+              {checkpointFiles.map((path) => {
+                const audit = checkpointByPath.get(path);
+                const provenance = audit?.tool
+                  ? `${audit.tool}${
+                      audit.appliedAt
+                        ? ` · ${new Date(audit.appliedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                        : ""
+                    }`
+                  : "Agent mutation";
+                return (
+                  <li
+                    key={path}
+                    className="group flex items-center gap-2 px-3 py-1.5 hover:bg-accent"
                   >
-                    {path}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      void run(() => onRestoreCheckpointFile(path))
-                    }
-                    className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground opacity-0 transition hover:bg-secondary hover:text-foreground disabled:opacity-30 group-hover:opacity-100 group-focus-within:opacity-100"
-                  >
-                    Revert
-                  </button>
-                </li>
-              ))}
+                    <FileIcon
+                      size={12}
+                      className="shrink-0 text-muted-foreground"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <span
+                        className="block truncate text-[11px] text-foreground"
+                        title={path}
+                      >
+                        {path}
+                      </span>
+                      <span className="block truncate text-[10px] text-faint">
+                        {provenance}
+                      </span>
+                    </div>
+                    <div className="flex gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
+                      {audit ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            void run(() => onRestoreLatestMutation(path))
+                          }
+                          className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-30"
+                        >
+                          Undo latest
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void run(() => onRestoreCheckpointFile(path))
+                        }
+                        className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-30"
+                      >
+                        Revert run
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           </section>
         ) : null}

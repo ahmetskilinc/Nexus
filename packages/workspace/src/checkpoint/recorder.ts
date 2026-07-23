@@ -2,6 +2,7 @@ import * as path from "node:path";
 import {
   type Checkpoint,
   type CheckpointEntry,
+  MAX_MUTATIONS_PER_FILE,
   type StoreOptions,
   writeCheckpoint,
 } from "./store";
@@ -27,6 +28,12 @@ export type CheckpointMetadata = {
   id: string;
   createdAt: number;
   files: string[];
+  /// The last successful mutation that produced each file's post-image.
+  entries: Array<{
+    path: string;
+    tool?: string;
+    appliedAt?: number;
+  }>;
 };
 
 /// Records every applied mutation of a run into one checkpoint file outside
@@ -64,16 +71,49 @@ export class CheckpointRecorder {
     ];
   }
 
-  record(entries: CheckpointEntry[]): void {
+  record(
+    entries: CheckpointEntry[],
+    audit?: { callId: string; tool: string; appliedAt?: number },
+  ): void {
     for (const entry of entries) {
+      const audited = audit
+        ? {
+            ...entry,
+            audit: { ...audit, appliedAt: audit.appliedAt ?? Date.now() },
+          }
+        : entry;
       const existing = this.checkpoint.entries.find(
-        (current) => current.path === entry.path,
+        (current) => current.path === audited.path,
       );
       if (existing) {
-        // Keep the original pre-image but advance the expected post-image.
-        existing.after = entry.after;
+        // Keep the run's original pre-image while retaining each reversible
+        // step. The history is newest-first and bounded so a pathological run
+        // cannot grow unbounded local recovery storage.
+        if (audited.audit) {
+          existing.history = [
+            {
+              before: existing.after,
+              after: audited.after,
+              audit: audited.audit,
+            },
+            ...(existing.history ?? []),
+          ].slice(0, MAX_MUTATIONS_PER_FILE);
+        }
+        existing.after = audited.after;
+        existing.audit = audited.audit;
       } else {
-        this.checkpoint.entries.push(entry);
+        this.checkpoint.entries.push({
+          ...audited,
+          history: audited.audit
+            ? [
+                {
+                  before: audited.before,
+                  after: audited.after,
+                  audit: audited.audit,
+                },
+              ]
+            : undefined,
+        });
       }
     }
     try {
@@ -89,6 +129,11 @@ export class CheckpointRecorder {
       id: this.checkpoint.id,
       createdAt: this.checkpoint.createdAt,
       files: this.checkpoint.entries.map((entry) => entry.path),
+      entries: this.checkpoint.entries.map((entry) => ({
+        path: entry.path,
+        tool: entry.audit?.tool,
+        appliedAt: entry.audit?.appliedAt,
+      })),
     };
   }
 }

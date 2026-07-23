@@ -100,6 +100,43 @@ describe("openSse", () => {
     expect(events).toEqual([{ n: 1 }, { n: 2 }]);
   });
 
+  test("retries a rate-limited request using Retry-After", async () => {
+    let calls = 0;
+    const retries: unknown[] = [];
+    const fetchFn = (() => {
+      calls += 1;
+      if (calls === 1)
+        return Promise.resolve(
+          new Response("busy", {
+            status: 429,
+            headers: { "Retry-After": "0" },
+          }),
+        );
+      return sseFetch(['data: {"ok":true}\n'])("", {});
+    }) as unknown as typeof fetch;
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of openSse(
+      fetchFn,
+      "https://x",
+      [],
+      {},
+      new AbortController().signal,
+      undefined,
+      { emit: (event) => retries.push(event) },
+    ))
+      chunks.push(chunk);
+    expect(calls).toBe(2);
+    expect(retries).toEqual([
+      {
+        type: "provider_retry",
+        attempt: 1,
+        delayMs: 0,
+        reason: "Provider temporarily unavailable (HTTP 429)",
+      },
+    ]);
+    expect(new TextDecoder().decode(chunks[0])).toContain('"ok":true');
+  });
+
   test("network failure surfaces as a provider-request error", async () => {
     const fetchFn = (() =>
       Promise.reject(new Error("socket hang up"))) as unknown as typeof fetch;
