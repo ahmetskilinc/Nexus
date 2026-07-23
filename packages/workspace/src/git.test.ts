@@ -4,7 +4,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
+  branchSync,
   commitChanges,
+  pushCommits,
   stageFiles,
   unstageFiles,
   validateRelativePath,
@@ -56,6 +58,43 @@ test.skipIf(!gitAvailable)("git actions stage unstage and commit", async () => {
   await commitChanges(dir, "Add note");
   expect(await workspaceChanges(dir)).toEqual([]);
 });
+
+test.skipIf(!gitAvailable)(
+  "push publishes an untracked branch then reports it in sync",
+  async () => {
+    const dir = gitFixture();
+    fs.writeFileSync(path.join(dir, "note.txt"), "one\n");
+    await stageFiles(dir, ["note.txt"]);
+    await commitChanges(dir, "Add note");
+
+    const untracked = await branchSync(dir);
+    expect(untracked.branch).not.toBeNull();
+    expect(untracked.upstream).toBeNull();
+    expect(untracked.hasRemote).toBe(false);
+    // Nothing to push to yet.
+    await expect(pushCommits(dir)).rejects.toThrow("no remote");
+
+    const remote = fs.mkdtempSync(path.join(os.tmpdir(), "nexus-git-remote-"));
+    created.push(remote);
+    execFileSync("git", ["init", "-q", "--bare", remote], { stdio: "ignore" });
+    execFileSync("git", ["remote", "add", "origin", remote], {
+      cwd: dir,
+      stdio: "ignore",
+    });
+
+    // First push has no upstream, so it must publish the branch.
+    const published = await pushCommits(dir);
+    expect(published.upstream).toBe(`origin/${untracked.branch}`);
+    expect(published.ahead).toBe(0);
+    expect(published.hasRemote).toBe(true);
+
+    fs.writeFileSync(path.join(dir, "note.txt"), "two\n");
+    await stageFiles(dir, ["note.txt"]);
+    await commitChanges(dir, "Edit note");
+    expect((await branchSync(dir)).ahead).toBe(1);
+    expect((await pushCommits(dir)).ahead).toBe(0);
+  },
+);
 
 test("git diff rejects paths outside the workspace", () => {
   expect(() => validateRelativePath("src/main.rs")).not.toThrow();

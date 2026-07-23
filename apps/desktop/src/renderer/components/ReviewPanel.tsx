@@ -1,4 +1,4 @@
-import type { WorkspaceChange } from "@nexus/protocol";
+import type { BranchSync, WorkspaceChange } from "@nexus/protocol";
 import { m } from "motion/react";
 import {
   lazy,
@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import { basename } from "../lib/format";
-import { CloseIcon, FileIcon, GitBranchIcon } from "./Icons";
+import { CloseIcon, FileIcon, GitBranchIcon, UploadIcon } from "./Icons";
 import { Hint } from "./Tooltip";
 
 const PatchDiff = lazy(() =>
@@ -30,6 +30,8 @@ export function ReviewPanel({
   onUnstageFiles,
   onCommit,
   onDiscardFile,
+  sync,
+  onPush,
   canRestoreCheckpoint,
   checkpointFiles,
   onRestoreCheckpoint,
@@ -44,6 +46,9 @@ export function ReviewPanel({
   onUnstageFiles: (paths: string[]) => Promise<void>;
   onCommit: (message: string) => Promise<boolean>;
   onDiscardFile: (path: string) => Promise<void>;
+  /// The checked-out branch's standing against its upstream.
+  sync: BranchSync;
+  onPush: () => Promise<boolean>;
   canRestoreCheckpoint: boolean;
   /// Files still revertible from the last run's checkpoint (empty when none).
   checkpointFiles: string[];
@@ -57,6 +62,7 @@ export function ReviewPanel({
   const [entries, setEntries] = useState<Entry[]>([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pushing, setPushing] = useState(false);
   const visible = useMemo(
     () => changes.filter((change) => change.status !== "ignored"),
     [changes],
@@ -110,6 +116,28 @@ export function ReviewPanel({
     }
   }
 
+  async function push() {
+    if (pushing) return;
+    setPushing(true);
+    try {
+      await onPush();
+    } finally {
+      setPushing(false);
+    }
+  }
+
+  // A branch with no upstream is published (`--set-upstream`) rather than
+  // pushed, and has no ahead count to show until it is tracking something.
+  const publishing = sync.branch !== null && sync.upstream === null;
+  const canPush =
+    sync.hasRemote && sync.branch !== null && (publishing || sync.ahead > 0);
+  const pushHint = publishing
+    ? `Publish ${sync.branch} to the remote and track it`
+    : `Push ${sync.ahead} commit${sync.ahead === 1 ? "" : "s"} to ${sync.upstream}` +
+      (sync.behind > 0
+        ? ` — ${sync.behind} behind, the push may be rejected`
+        : "");
+
   const shown = entries.filter((entry) => entry.patch.trim());
   const anyLoading = entries.some((entry) => entry.loading);
 
@@ -140,6 +168,23 @@ export function ReviewPanel({
             <span className="ml-1.5 text-faint">{visible.length}</span>
           ) : null}
         </span>
+        {canPush ? (
+          <Hint label={pushHint} side="bottom">
+            <button
+              type="button"
+              disabled={pushing}
+              onClick={() => void push()}
+              className="app-no-drag flex shrink-0 items-center gap-1 rounded bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary-soft transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <UploadIcon size={11} />
+              {pushing
+                ? "Pushing…"
+                : publishing
+                  ? "Publish"
+                  : `Push ${sync.ahead}`}
+            </button>
+          </Hint>
+        ) : null}
         {canRestoreCheckpoint ? (
           <button
             type="button"

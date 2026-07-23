@@ -1,5 +1,13 @@
-import type { WorkspaceChange } from "@nexus/protocol";
+import type { BranchSync, WorkspaceChange } from "@nexus/protocol";
 import { useEffect, useRef, useState } from "react";
+
+const NO_SYNC: BranchSync = {
+  branch: null,
+  upstream: null,
+  ahead: 0,
+  behind: 0,
+  hasRemote: false,
+};
 
 /// Owns workspace file-index + git-change state and branch info. File *contents*
 /// (the editor tabs) live in `useEditorTabs`.
@@ -12,6 +20,7 @@ export function useWorkspaceFiles(
   const [changes, setChanges] = useState<WorkspaceChange[]>([]);
   const [branch, setBranch] = useState<string>();
   const [branches, setBranches] = useState<string[]>([]);
+  const [sync, setSync] = useState<BranchSync>(NO_SYNC);
   // Ref so the effect below can flush the *latest* state without re-running
   // (and re-fetching branches) on every unrelated state change.
   const syncStateRef = useRef(syncState);
@@ -22,6 +31,7 @@ export function useWorkspaceFiles(
     // and diffs immediately — never show another repo's files.
     setFiles([]);
     setChanges([]);
+    setSync(NO_SYNC);
     if (!workspacePath) {
       setBranch(undefined);
       setBranches([]);
@@ -51,6 +61,14 @@ export function useWorkspaceFiles(
         .catch(() => {
           if (!cancelled) setBranches([]);
         });
+      void window.nexus
+        .branchSync()
+        .then((next) => {
+          if (!cancelled) setSync(next);
+        })
+        .catch(() => {
+          if (!cancelled) setSync(NO_SYNC);
+        });
     })();
     return () => {
       cancelled = true;
@@ -71,11 +89,36 @@ export function useWorkspaceFiles(
         .listBranches()
         .then(setBranches)
         .catch(() => {});
+      void refreshSync();
       await reloadFiles();
     } catch (reason) {
       reportError(
         reason instanceof Error ? reason.message : "Could not switch branch.",
       );
+    }
+  }
+
+  /// Ahead/behind counts only move on commit, push, or branch switch, so this
+  /// is refreshed at those points rather than alongside every file refresh.
+  async function refreshSync() {
+    try {
+      setSync(await window.nexus.branchSync());
+    } catch {
+      setSync(NO_SYNC);
+    }
+  }
+
+  async function pushCommits(): Promise<boolean> {
+    try {
+      setSync(await window.nexus.pushCommits());
+      return true;
+    } catch (reason) {
+      reportError(
+        reason instanceof Error ? reason.message : "Could not push commits.",
+      );
+      // The push may have failed midway (rejected, network); re-read the truth.
+      await refreshSync();
+      return false;
     }
   }
 
@@ -129,7 +172,7 @@ export function useWorkspaceFiles(
   async function commitChanges(message: string): Promise<boolean> {
     try {
       await window.nexus.commitChanges(message);
-      await refreshChanges();
+      await Promise.all([refreshChanges(), refreshSync()]);
       return true;
     } catch (reason) {
       reportError(
@@ -153,6 +196,8 @@ export function useWorkspaceFiles(
       ]);
       setFiles(nextFiles);
       setChanges(nextChanges);
+      // An agent run (or an external commit) may have moved HEAD.
+      void refreshSync();
     } catch (reason) {
       reportError(
         reason instanceof Error
@@ -172,6 +217,8 @@ export function useWorkspaceFiles(
       ]);
       setFiles(nextFiles);
       setChanges(nextChanges);
+      // An agent run (or an external commit) may have moved HEAD.
+      void refreshSync();
     } catch (reason) {
       reportError(
         reason instanceof Error
@@ -186,7 +233,10 @@ export function useWorkspaceFiles(
     changes,
     branch,
     branches,
+    sync,
     switchBranch,
+    pushCommits,
+    refreshSync,
     stageFiles,
     unstageFiles,
     commitChanges,

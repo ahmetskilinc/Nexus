@@ -88,7 +88,9 @@ export function App() {
     changes,
     branch,
     branches,
+    sync,
     switchBranch,
+    pushCommits,
     stageFiles,
     unstageFiles,
     commitChanges,
@@ -587,6 +589,8 @@ export function App() {
                   onUnstageFiles={unstageFiles}
                   onCommit={commitChanges}
                   onDiscardFile={discardFile}
+                  sync={sync}
+                  onPush={pushCommits}
                   canRestoreCheckpoint={Boolean(
                     current?.checkpoint && !current.checkpoint.restoredAt,
                   )}

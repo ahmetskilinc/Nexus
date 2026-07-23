@@ -37,6 +37,7 @@ import {
   SlidersHorizontalIcon,
   Sun03Icon,
   Tick02Icon,
+  Upload01Icon,
   User03Icon,
   Wrench01Icon,
 } from "@hugeicons-pro/core-stroke-rounded";
@@ -109,3 +110,4 @@ export const CopyIcon = make(Copy01Icon);
 export const PinIcon = make(HuPinIcon);
 export const MoreHorizontalIcon = make(HuMoreHorizontalIcon);
 export const DownloadIcon = make(Download01Icon);
+export const UploadIcon = make(Upload01Icon);

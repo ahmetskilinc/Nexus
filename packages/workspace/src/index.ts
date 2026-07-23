@@ -10,9 +10,11 @@ export type {
   StoreOptions,
 } from "./checkpoint/store";
 export {
+  branchSync,
   commitChanges,
   discardFile,
   gitStatusSummary,
+  pushCommits,
   stageFiles,
   unstageFiles,
   validateRelativePath,

@@ -1,11 +1,13 @@
 import { loadInstructionFileInfo } from "@nexus/agent";
 import { asRecord, RuntimeError } from "@nexus/protocol";
 import {
+  branchSync,
   commitChanges,
   discardFile,
   indexWorkspace,
   inspectWorkspace,
   listMemories,
+  pushCommits,
   restoreCheckpoint,
   stageFiles,
   unstageFiles,
@@ -56,6 +58,16 @@ export async function handleWorkspaceCommit(params: unknown) {
   const message = stringParam(params, "message");
   await commitChanges(path, message);
   return {};
+}
+
+export async function handleWorkspaceSync(params: unknown) {
+  const path = stringParam(params, "path");
+  return { sync: await branchSync(path) };
+}
+
+export async function handleWorkspacePush(params: unknown) {
+  const path = stringParam(params, "path");
+  return { sync: await pushCommits(path) };
 }
 
 export async function handleWorkspaceDiscard(params: unknown) {

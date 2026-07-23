@@ -39,7 +39,9 @@ import {
   handleWorkspaceDiscard,
   handleWorkspaceIndex,
   handleWorkspaceInspect,
+  handleWorkspacePush,
   handleWorkspaceStage,
+  handleWorkspaceSync,
   handleWorkspaceUnstage,
 } from "./handlers/workspace";
 
@@ -115,6 +117,10 @@ export class NexusCore implements RuntimeCore {
         return handleWorkspaceCommit(params);
       case "workspace.discard":
         return handleWorkspaceDiscard(params);
+      case "workspace.sync":
+        return handleWorkspaceSync(params);
+      case "workspace.push":
+        return handleWorkspacePush(params);
       case "checkpoint.restore":
         return handleCheckpointRestore(params);
       case "context.preview":

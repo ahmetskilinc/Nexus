@@ -1,5 +1,6 @@
 import type {
   AppState,
+  BranchSync,
   Memory,
   ModelInfo,
   RuntimeEvent,
@@ -44,6 +45,9 @@ const api = {
     ipcRenderer.invoke("workspace:commit", message) as Promise<void>,
   discardFile: (relativePath: string) =>
     ipcRenderer.invoke("workspace:discard", relativePath) as Promise<void>,
+  branchSync: () => ipcRenderer.invoke("workspace:sync") as Promise<BranchSync>,
+  pushCommits: () =>
+    ipcRenderer.invoke("workspace:push") as Promise<BranchSync>,
   restoreCheckpoint: (checkpointId: string, paths?: string[]) =>
     ipcRenderer.invoke("checkpoint:restore", checkpointId, paths) as Promise<
       string[]

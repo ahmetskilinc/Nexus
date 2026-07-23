@@ -351,6 +351,22 @@ function registerIpc() {
     await runtime.request("workspace.commit", { path: workspacePath, message })
       .response;
   });
+  ipcMain.handle("workspace:sync", async () => {
+    const state = store.snapshot();
+    const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
+    const { response } = runtime.request("workspace.sync", {
+      path: workspacePath,
+    });
+    return (await response).sync;
+  });
+  ipcMain.handle("workspace:push", async () => {
+    const state = store.snapshot();
+    const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
+    const { response } = runtime.request("workspace.push", {
+      path: workspacePath,
+    });
+    return (await response).sync;
+  });
   ipcMain.handle("workspace:discard", async (_event, relativePath: string) => {
     const state = store.snapshot();
     const workspacePath = requireWorkspace(state.workspacePath ?? "", state);

@@ -1,7 +1,14 @@
 import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { RuntimeError } from "@nexus/protocol";
+import { type BranchSync, RuntimeError } from "@nexus/protocol";
+
+export type GitOptions = {
+  /// Milliseconds before the child is killed; 0 (the default) never times out.
+  timeoutMs?: number;
+  /// Overlaid on the parent environment, not a replacement for it.
+  env?: NodeJS.ProcessEnv;
+};
 
 export type GitResult = {
   success: boolean;
@@ -13,12 +20,22 @@ export type GitResult = {
 /// Runs git without a shell and resolves with the exit status like Rust's
 /// `Command::output` — a nonzero exit is a result, not a rejection. Only a
 /// spawn failure (git missing) rejects, as a RuntimeError.
-export function runGit(workspace: string, args: string[]): Promise<GitResult> {
+export function runGit(
+  workspace: string,
+  args: string[],
+  options: GitOptions = {},
+): Promise<GitResult> {
   return new Promise((resolve, reject) => {
     execFile(
       "git",
       args,
-      { cwd: workspace, encoding: "buffer", maxBuffer: 512 * 1024 * 1024 },
+      {
+        cwd: workspace,
+        encoding: "buffer",
+        maxBuffer: 512 * 1024 * 1024,
+        timeout: options.timeoutMs ?? 0,
+        env: options.env ? { ...process.env, ...options.env } : process.env,
+      },
       (error, stdout, stderr) => {
         const failure = error as
           | (Error & { code?: number | string; signal?: string | null })
@@ -61,8 +78,9 @@ async function gitAction(
   workspace: string,
   args: string[],
   failure: string,
+  options: GitOptions = {},
 ): Promise<void> {
-  const output = await runGit(workspace, args);
+  const output = await runGit(workspace, args, options);
   if (output.success) return;
   const detail = output.stderr.toString("utf8").trim();
   throw RuntimeError.msg(detail === "" ? failure : detail);
@@ -111,6 +129,87 @@ export async function commitChanges(
     ["commit", "-m", trimmed],
     "Git could not create the commit.",
   );
+}
+
+/// Reads the checked-out branch, its upstream, and the ahead/behind counts in
+/// one call. Never throws: outside a repository it reports an empty sync so the
+/// review panel simply hides its push affordance.
+export async function branchSync(workspace: string): Promise<BranchSync> {
+  const empty: BranchSync = {
+    branch: null,
+    upstream: null,
+    ahead: 0,
+    behind: 0,
+    hasRemote: false,
+  };
+  let output: GitResult;
+  try {
+    output = await runGit(
+      workspace,
+      ["status", "--porcelain=v2", "--branch", "--untracked-files=no"],
+      { timeoutMs: 5000 },
+    );
+  } catch {
+    return empty;
+  }
+  if (!output.success) return empty;
+
+  const sync = { ...empty };
+  for (const line of output.stdout.toString("utf8").split("\n")) {
+    if (!line.startsWith("# branch.")) continue;
+    const [header, ...rest] = line.slice(2).split(" ");
+    const value = rest.join(" ").trim();
+    // A detached HEAD reports the literal "(detached)" as its head name.
+    if (header === "branch.head" && value !== "(detached)") sync.branch = value;
+    else if (header === "branch.upstream") sync.upstream = value;
+    else if (header === "branch.ab") {
+      // "+2 -1" — ahead first, behind second.
+      const [ahead, behind] = value.split(" ");
+      sync.ahead = Math.abs(Number.parseInt(ahead ?? "", 10)) || 0;
+      sync.behind = Math.abs(Number.parseInt(behind ?? "", 10)) || 0;
+    }
+  }
+  sync.hasRemote = (await remoteNames(workspace)).length > 0;
+  return sync;
+}
+
+/// Pushes the checked-out branch, publishing it when it has no upstream yet.
+/// Returns the sync state afterwards so the caller can render the new counts.
+export async function pushCommits(workspace: string): Promise<BranchSync> {
+  const sync = await branchSync(workspace);
+  if (!sync.branch) {
+    throw RuntimeError.msg("HEAD is detached; check out a branch to push.");
+  }
+  const remotes = await remoteNames(workspace);
+  if (remotes.length === 0) {
+    throw RuntimeError.msg("This repository has no remote to push to.");
+  }
+
+  const args = sync.upstream
+    ? ["push"]
+    : [
+        "push",
+        "--set-upstream",
+        remotes.includes("origin") ? "origin" : (remotes[0] as string),
+        sync.branch,
+      ];
+  await gitAction(workspace, args, "Git could not push this branch.", {
+    timeoutMs: 120_000,
+    // Never let git or ssh block on an interactive prompt: there is no terminal
+    // behind this process, so a credential prompt would hang until the timeout.
+    env: { GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" },
+  });
+  return branchSync(workspace);
+}
+
+async function remoteNames(workspace: string): Promise<string[]> {
+  const output = await runGit(workspace, ["remote"], { timeoutMs: 5000 });
+  if (!output.success) return [];
+  return output.stdout
+    .toString("utf8")
+    .split("\n")
+    .map((name) => name.trim())
+    .filter(Boolean);
 }
 
 export async function discardFile(

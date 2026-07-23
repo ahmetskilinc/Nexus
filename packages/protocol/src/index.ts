@@ -54,4 +54,4 @@ export type {
   TranscriptItem,
 } from "./session";
 export type { AppState, ThemePreference } from "./state";
-export type { Memory, WorkspaceChange } from "./workspace";
+export type { BranchSync, Memory, WorkspaceChange } from "./workspace";
