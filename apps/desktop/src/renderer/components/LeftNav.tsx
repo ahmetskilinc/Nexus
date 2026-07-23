@@ -196,26 +196,28 @@ function LeftNavContent({
         <span className="text-[10px] font-semibold tracking-[0.13em] text-faint uppercase">
           Projects
         </span>
-        <Hint label="Import session">
-          <button
-            type="button"
-            aria-label="Import session"
-            onClick={onImportSession}
-            className="grid size-5 place-items-center rounded px-1 text-[12px] font-semibold text-faint transition hover:bg-accent hover:text-foreground"
-          >
-            ↥
-          </button>
-        </Hint>
-        <Hint label="Open a repository">
-          <button
-            type="button"
-            aria-label="Open a repository"
-            onClick={onOpenWorkspace}
-            className="grid size-5 place-items-center rounded text-faint transition hover:bg-accent hover:text-foreground"
-          >
-            <PlusIcon size={14} />
-          </button>
-        </Hint>
+        <div className="flex items-center gap-0.5">
+          <Hint label="Import session">
+            <button
+              type="button"
+              aria-label="Import session"
+              onClick={onImportSession}
+              className="grid size-5 place-items-center rounded text-[12px] font-semibold text-faint transition hover:bg-accent hover:text-foreground"
+            >
+              ↥
+            </button>
+          </Hint>
+          <Hint label="Open a repository">
+            <button
+              type="button"
+              aria-label="Open a repository"
+              onClick={onOpenWorkspace}
+              className="grid size-5 place-items-center rounded text-faint transition hover:bg-accent hover:text-foreground"
+            >
+              <PlusIcon size={14} />
+            </button>
+          </Hint>
+        </div>
       </div>
 
       {selecting ? (
