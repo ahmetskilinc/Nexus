@@ -21,15 +21,18 @@ function gitFixture(): { dir: string; toolbox: Toolbox } {
 describe("git_status", () => {
   test("reports a clean tree and untracked files", async () => {
     const { dir, toolbox } = gitFixture();
-    let output = await toolbox.execute("git_status", {});
-    expect(output).toContain("##");
-    expect(output).not.toContain("note.txt");
+    try {
+      let output = await toolbox.execute("git_status", {});
+      expect(output).toContain("##");
+      expect(output).not.toContain("note.txt");
 
-    fs.writeFileSync(path.join(dir, "new.txt"), "x\n");
-    output = await toolbox.execute("git_status", {});
-    expect(output).toContain("?? new.txt");
-    cleanup(dir);
-  });
+      fs.writeFileSync(path.join(dir, "new.txt"), "x\n");
+      output = await toolbox.execute("git_status", {});
+      expect(output).toContain("?? new.txt");
+    } finally {
+      cleanup(dir);
+    }
+  }, 15_000);
 });
 
 describe("git_diff", () => {

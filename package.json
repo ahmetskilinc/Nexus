@@ -33,7 +33,6 @@
     "tar": "7.5.22"
   },
   "dependencies": {
-    "app-builder-lib": "^26.15.3",
     "tar": "7.5.22"
   }
 }
