@@ -20,6 +20,7 @@ import {
   addProvider,
   removeMcpServer,
   removeProvider,
+  clearRunJournal,
   restoreArchivedSession,
   setCommandEnvironment,
   setCustomInstructions,
@@ -455,7 +456,7 @@ function GeneralPanel({
           </span>
         </Row>
       </Section>
-      <RunJournalSection state={state} />
+      <RunJournalSection state={state} apply={apply} />
       <Section title="Archived sessions">
         {state.sessions.filter((session) => session.archivedAt).length === 0 ? (
           <Row
@@ -488,7 +489,13 @@ function GeneralPanel({
   );
 }
 
-function RunJournalSection({ state }: { state: AppState }) {
+function RunJournalSection({
+  state,
+  apply,
+}: {
+  state: AppState;
+  apply: (op: AppOp) => void;
+}) {
   const current = state.sessions.find(
     (session) => session.id === state.currentSessionId,
   );
@@ -510,9 +517,8 @@ function RunJournalSection({ state }: { state: AppState }) {
           last
         />
       ) : (
-        [...entries]
-          .reverse()
-          .map((entry, index) => (
+        <>
+          {[...entries].reverse().map((entry, index) => (
             <Row
               key={`${entry.id}-${entry.startedAt}`}
               title={label[entry.status]}
@@ -523,7 +529,17 @@ function RunJournalSection({ state }: { state: AppState }) {
               }`}
               last={index === entries.length - 1}
             />
-          ))
+          ))}
+          <div className="flex justify-end py-3">
+            <button
+              type="button"
+              onClick={() => current && apply(clearRunJournal(current.id))}
+              className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground"
+            >
+              Clear run activity
+            </button>
+          </div>
+        </>
       )}
     </Section>
   );

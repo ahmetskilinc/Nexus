@@ -111,6 +111,7 @@ export function App() {
     fetchRemotes,
     pullCommits,
     pushCommits,
+    createTag,
     revertCommit,
     stashChanges,
     applyLatestStash,
@@ -692,6 +693,7 @@ export function App() {
                   onCommit={commitChanges}
                   onDiscardFile={discardFile}
                   onRevertCommit={revertCommit}
+                  onCreateTag={createTag}
                   onStash={stashChanges}
                   onApplyStash={applyLatestStash}
                   sync={sync}

@@ -228,6 +228,18 @@ export function useWorkspaceFiles(
     }
   }
 
+  async function createTag(name: string): Promise<boolean> {
+    try {
+      await window.nexus.createTag(name);
+      return true;
+    } catch (reason) {
+      reportError(
+        reason instanceof Error ? reason.message : "Could not create the tag.",
+      );
+      return false;
+    }
+  }
+
   async function revertCommit(revision: string): Promise<boolean> {
     try {
       await window.nexus.revertCommit(revision);
@@ -356,6 +368,7 @@ export function useWorkspaceFiles(
     fetchRemotes,
     pullCommits,
     pushCommits,
+    createTag,
     revertCommit,
     stashChanges,
     applyLatestStash,

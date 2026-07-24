@@ -17,6 +17,14 @@ export type AppOp = (state: AppState) => AppState;
 
 // MARK: - Top-level settings
 
+export const clearRunJournal =
+  (sessionId: string): AppOp =>
+  (state) =>
+    updateSession(state, sessionId, (session) => ({
+      ...session,
+      runJournal: undefined,
+    }));
+
 export const setTheme =
   (theme: ThemePreference): AppOp =>
   (state) => ({ ...state, theme });

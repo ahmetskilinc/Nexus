@@ -31,6 +31,7 @@ export function ReviewPanel({
   onCommit,
   onDiscardFile,
   onRevertCommit,
+  onCreateTag,
   onStash,
   onApplyStash,
   sync,
@@ -54,6 +55,7 @@ export function ReviewPanel({
   onCommit: (message: string) => Promise<boolean>;
   onDiscardFile: (path: string) => Promise<void>;
   onRevertCommit: (revision: string) => Promise<boolean>;
+  onCreateTag: (name: string) => Promise<boolean>;
   onStash: () => Promise<boolean>;
   onApplyStash: () => Promise<boolean>;
   /// The checked-out branch's standing against its upstream.
@@ -77,6 +79,7 @@ export function ReviewPanel({
   const [entries, setEntries] = useState<Entry[]>([]);
   const [message, setMessage] = useState("");
   const [revertRevision, setRevertRevision] = useState("");
+  const [tagName, setTagName] = useState("");
   const [busy, setBusy] = useState(false);
   const [syncing, setSyncing] = useState<
     "fetch" | "pull" | "push" | "stash" | "apply"
@@ -454,6 +457,37 @@ export function ReviewPanel({
               >
                 Commit staged changes
               </button>
+            </section>
+
+            <section className="border-b border-border-soft px-3 py-3">
+              <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                Create tag
+              </span>
+              <p className="mt-1 text-[11px] leading-relaxed text-faint">
+                Creates a local annotated marker at the current commit. Tags are
+                not pushed automatically.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={tagName}
+                  onChange={(event) => setTagName(event.target.value)}
+                  placeholder="v1.0.0"
+                  spellCheck={false}
+                  className="min-w-0 flex-1 rounded-lg border border-border-soft bg-background px-2.5 py-1.5 font-mono text-[11px] text-foreground outline-none placeholder:text-faint focus:border-primary-dim"
+                />
+                <button
+                  type="button"
+                  disabled={busy || !tagName.trim()}
+                  onClick={() =>
+                    void run(async () => {
+                      if (await onCreateTag(tagName.trim())) setTagName("");
+                    })
+                  }
+                  className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-primary-soft transition hover:bg-primary/10 disabled:opacity-50"
+                >
+                  Tag
+                </button>
+              </div>
             </section>
 
             <section className="border-b border-border-soft px-3 py-3">
