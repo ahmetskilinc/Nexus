@@ -2,6 +2,15 @@ import type { ApprovalMode } from "./approvals";
 import type { AgentMessage } from "./messages";
 import type { Effort, McpServerConfig } from "./providers";
 
+/// An image held only in renderer memory for the request that carries it. Its
+/// data URL must never be copied into session state, exports, journals, or logs.
+export type EphemeralImage = {
+  name: string;
+  mediaType: "image/png" | "image/jpeg" | "image/webp";
+  dataUrl: string;
+  size: number;
+};
+
 /// Parameters for starting an agent run. Electron-internal IPC type — the
 /// main process augments it with providerKind/auth before hitting the runtime.
 export type StartAgentParams = {
@@ -11,6 +20,9 @@ export type StartAgentParams = {
   approvalMode: ApprovalMode;
   workspacePath: string;
   history: AgentMessage[];
+  /// Ephemeral images forwarded directly to the selected provider on this
+  /// request only. They are intentionally absent from `history`.
+  images?: EphemeralImage[];
   previousOpenAIResponseId?: string;
   webAccess: boolean;
   commandEnvironment: "compatible" | "restricted";

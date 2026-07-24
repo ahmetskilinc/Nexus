@@ -722,6 +722,17 @@ function registerIpc() {
     },
   );
   ipcMain.handle(
+    "runtime:answer-question",
+    async (_event, runId: string, callId: string, answer: string) => {
+      const { response } = runtime.request("agent.answer_question", {
+        runId,
+        callId,
+        answer,
+      });
+      return response;
+    },
+  );
+  ipcMain.handle(
     "oauth:signin",
     async (_event, providerId: string, providerKind: string) => {
       const { response } = runtime.request(

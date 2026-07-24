@@ -54,6 +54,32 @@ export const AUX_TOOLS: readonly ToolSchema[] = [
     kind: "todo",
   },
   {
+    name: "ask_user",
+    description:
+      "Pause the current run to ask the user a focused question when their choice or missing information is needed to proceed. Ask one concise, decision-ready question. Supply choices when a small set of options would help. The run resumes when the user answers. Do not use this to approve edits or commands; those are handled separately.",
+    parameters: {
+      type: "object",
+      properties: {
+        question: {
+          type: "string",
+          description: "The focused question to show the user.",
+        },
+        choices: {
+          type: "array",
+          description: "Optional short choices the user can select.",
+          items: { type: "string" },
+        },
+        allowFreeform: {
+          type: "boolean",
+          description:
+            "Whether the user may type an answer in addition to choices.",
+        },
+      },
+      required: ["question"],
+    },
+    kind: "askUser",
+  },
+  {
     name: "write_plan",
     description:
       "Publish a feature plan for the current request as a document shown to the user in a side panel. Call this once, after researching the workspace and before making changes, to lay out what you will do and why. Follow it with todo_write to seed the checklist you will then carry out. You may call write_plan again to revise the plan if the approach changes.",

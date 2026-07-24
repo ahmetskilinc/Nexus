@@ -125,6 +125,14 @@ export function describeToolCall(item: TranscriptItem): ToolPresentation {
         verb: "Task list",
         bodyKind: "status",
       };
+    case "ask_user":
+      return {
+        card: "generic",
+        Icon: WrenchIcon,
+        verb: "Ask",
+        target: str(a.question),
+        bodyKind: "status",
+      };
     case "spawn_agent":
       return {
         card: "subagent",

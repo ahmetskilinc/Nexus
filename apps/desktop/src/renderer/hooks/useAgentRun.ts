@@ -1,6 +1,7 @@
 import type {
   AppState,
   PendingApproval,
+  PendingQuestion,
   TranscriptItem,
 } from "@nexus/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -33,12 +34,19 @@ export type AgentRunApi = {
   /// True while a user-triggered compaction is in flight for this session.
   isCompacting: (sessionId: string) => boolean;
   pendingApprovalFor: (sessionId: string) => PendingApproval | undefined;
-  send: (sessionId: string, text: string, attachments?: string[]) => boolean;
+  pendingQuestionFor: (sessionId: string) => PendingQuestion | undefined;
+  send: (
+    sessionId: string,
+    text: string,
+    attachments?: string[],
+    images?: import("@nexus/protocol").EphemeralImage[],
+  ) => boolean;
   /// Folds this session's older turns into a summary now, instead of waiting
   /// for the automatic threshold. No-op while a run is in flight.
   compact: (sessionId: string) => void;
   cancel: (sessionId: string) => void;
   respondToApproval: (sessionId: string, approved: boolean) => void;
+  respondToQuestion: (sessionId: string, answer: string) => void;
   alwaysAllowCommand: (sessionId: string) => void;
 };
 
@@ -63,6 +71,9 @@ export function useAgentRun({
     Record<string, PendingApproval>
   >({});
   // Sessions with a compaction round-trip in flight, keyed by session id.
+  const [pendingQuestions, setPendingQuestions] = useState<
+    Record<string, PendingQuestion>
+  >({});
   const [compacting, setCompacting] = useState<Record<string, true>>({});
   // The event subscription is created once; the handlers read the live runs and
   // state through refs so they aren't stale without re-subscribing per render.
@@ -84,6 +95,7 @@ export function useAgentRun({
     (sessionId: string) => {
       setActiveRuns(({ [sessionId]: _gone, ...rest }) => rest);
       setPendingApprovals(({ [sessionId]: _gone, ...rest }) => rest);
+      setPendingQuestions(({ [sessionId]: _gone, ...rest }) => rest);
     },
     [setActiveRuns],
   );
@@ -123,6 +135,14 @@ export function useAgentRun({
           setPendingApprovals((current) => ({
             ...current,
             [run.sessionId]: { ...request, runId },
+          }));
+          return;
+        }
+        if (event.type === "user_question") {
+          const { type: _type, ...question } = event;
+          setPendingQuestions((current) => ({
+            ...current,
+            [run.sessionId]: { ...question, runId },
           }));
           return;
         }
@@ -201,6 +221,7 @@ export function useAgentRun({
     sessionId: string,
     text: string,
     attachments: string[] = [],
+    images: import("@nexus/protocol").EphemeralImage[] = [],
   ): boolean {
     if (!state) return false;
     const appState = state;
@@ -209,7 +230,7 @@ export function useAgentRun({
     const files = dedupeAttachments(attachments);
     const { providerId, model } = resolveModel(session, appState);
     if (
-      (!trimmed && files.length === 0) ||
+      (!trimmed && files.length === 0 && images.length === 0) ||
       !session ||
       !providerId ||
       !model ||
@@ -220,7 +241,11 @@ export function useAgentRun({
     // message is attachments-only); the model history carries the folded block.
     const detail =
       trimmed ||
-      `Attached ${files.length} file${files.length === 1 ? "" : "s"}`;
+      `Attached ${files.length} file${files.length === 1 ? "" : "s"}${
+        images.length
+          ? `${files.length ? " and " : ""}${images.length} image${images.length === 1 ? "" : "s"}`
+          : ""
+      }`;
     const historyText = foldAttachments(trimmed, files);
     const userItem: TranscriptItem = {
       id: createId(),
@@ -256,6 +281,7 @@ export function useAgentRun({
         approvalMode: session.approvalMode ?? "ask",
         workspacePath: session.workspacePath,
         history,
+        images,
         previousOpenAIResponseId: session.openAIResponseId,
         webAccess: appState.webAccess ?? false,
         commandEnvironment: appState.commandEnvironment ?? "compatible",
@@ -364,6 +390,16 @@ export function useAgentRun({
     [],
   );
 
+  const respondToQuestion = useCallback((sessionId: string, answer: string) => {
+    const trimmed = answer.trim();
+    if (!trimmed) return;
+    setPendingQuestions(({ [sessionId]: current, ...rest }) => {
+      if (!current) return rest;
+      void window.nexus.answerQuestion(current.runId, current.callId, trimmed);
+      return rest;
+    });
+  }, []);
+
   // Approve a pending command AND remember its program so future commands with
   // the same program run without prompting in the session that owns the run.
   const alwaysAllowCommand = useCallback(
@@ -392,10 +428,12 @@ export function useAgentRun({
     isRunning: (sessionId) => Boolean(activeRuns[sessionId]),
     isCompacting: (sessionId) => Boolean(compacting[sessionId]),
     pendingApprovalFor: (sessionId) => pendingApprovals[sessionId],
+    pendingQuestionFor: (sessionId) => pendingQuestions[sessionId],
     send,
     compact,
     cancel,
     respondToApproval,
+    respondToQuestion,
     alwaysAllowCommand,
   };
 }

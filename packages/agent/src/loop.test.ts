@@ -14,7 +14,7 @@ import { collectingEmitter } from "@nexus/protocol";
 import type { Provider, ToolCall, Turn, Usage } from "@nexus/providers";
 import { Toolbox } from "@nexus/tools";
 import { CheckpointRecorder } from "@nexus/workspace";
-import { ApprovalMailbox } from "./approvals";
+import { ApprovalMailbox, QuestionMailbox } from "./approvals";
 import { runLoop, Summarizer } from "./loop";
 import type { ApprovalMode } from "./modes";
 import { runSubagentLoop, SubagentLauncher } from "./subagent";
@@ -79,6 +79,7 @@ async function harness(mode: ApprovalMode = "auto") {
   const emitter = collectingEmitter();
   const hub = await McpHub.connect([]);
   const mailbox = new ApprovalMailbox();
+  const questionMailbox = new QuestionMailbox();
   const controller = new AbortController();
   const runner = new ToolRunner({
     fetchFn: rejectingFetch,
@@ -96,10 +97,20 @@ async function harness(mode: ApprovalMode = "auto") {
       credential: { kind: "api_key", apiKey: "" },
     }),
     signal: controller.signal,
+    questionMailbox,
   });
   const checkpoint = new CheckpointRecorder(dir, "test-run", { dataDir });
   const eventNames = () => emitter.events.map((event) => event.type);
-  return { dir, emitter, runner, checkpoint, mailbox, eventNames, controller };
+  return {
+    dir,
+    emitter,
+    runner,
+    checkpoint,
+    mailbox,
+    questionMailbox,
+    eventNames,
+    controller,
+  };
 }
 
 const placeholderSummarizer = new Summarizer({
@@ -243,6 +254,28 @@ describe("runLoop", () => {
     // Events reached the UI.
     expect(h.eventNames()).toContain("tool_call");
     expect(h.eventNames()).toContain("tool_result");
+  });
+
+  test("ask_user pauses for an answer and returns it to the provider", async () => {
+    const h = await harness();
+    const provider = new FakeProvider([
+      toolTurn(
+        "c1",
+        "ask_user",
+        '{"question":"Which database?","choices":["PostgreSQL","SQLite"]}',
+      ),
+      textTurn("ok"),
+    ]);
+    h.questionMailbox.deliver({ callId: "c1", answer: "PostgreSQL" });
+    await runLoop({ ...loopDefaults(h), provider, messages: [] });
+    expect(provider.outputs).toEqual([["c1", "User answered: PostgreSQL"]]);
+    expect(h.emitter.events).toContainEqual({
+      type: "user_question",
+      callId: "c1",
+      question: "Which database?",
+      choices: ["PostgreSQL", "SQLite"],
+      allowFreeform: true,
+    });
   });
 
   test("declined edit reports the decline and leaves disk untouched", async () => {

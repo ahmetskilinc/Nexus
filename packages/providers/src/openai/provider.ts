@@ -1,4 +1,9 @@
-import type { AgentMessage, Effort, RuntimeEmitter } from "@nexus/protocol";
+import type {
+  AgentMessage,
+  Effort,
+  EphemeralImage,
+  RuntimeEmitter,
+} from "@nexus/protocol";
 import {
   asArray,
   asString,
@@ -51,6 +56,7 @@ export class OpenAiProvider implements Provider {
     previousResponseId: string | undefined,
     history: AgentMessage[],
     private toolSchemas: unknown[],
+    images: EphemeralImage[] = [],
   ) {
     if (backend.kind === "api-key") {
       this.endpoint = API_ENDPOINT;
@@ -75,10 +81,10 @@ export class OpenAiProvider implements Provider {
     // the whole history.
     const last = history[history.length - 1];
     if (this.previousId !== undefined && last?.type === "user") {
-      this.pendingInput = [{ role: "user", content: last.text }];
+      this.pendingInput = input([last], images);
     } else {
       this.previousId = undefined;
-      this.pendingInput = input(history);
+      this.pendingInput = input(history, images);
     }
   }
 

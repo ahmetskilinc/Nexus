@@ -285,6 +285,42 @@ describe("RuntimeServer", () => {
     });
   });
 
+  test("agent.answer_question routes to the run's registered handler", async () => {
+    const seen: Array<[string, string]> = [];
+    const core: RuntimeCore = {
+      handle: (_method, _params, context) =>
+        new Promise((resolve) => {
+          context.onQuestionAnswer((callId, answer) => {
+            seen.push([callId, answer]);
+            resolve({});
+          });
+        }),
+    };
+    const { server, sent } = makeServer(core);
+    await server.handleMessage(INIT);
+    void server.handleMessage({
+      kind: "request",
+      id: "run-1",
+      method: "agent.run",
+      params: {},
+    });
+    await settle();
+    await server.handleMessage({
+      kind: "request",
+      id: "q-1",
+      method: "agent.answer_question",
+      params: { runId: "run-1", callId: "call-9", answer: "PostgreSQL" },
+    });
+    await settle();
+    expect(seen).toEqual([["call-9", "PostgreSQL"]]);
+    expect(sent).toContainEqual({
+      kind: "response",
+      id: "q-1",
+      ok: true,
+      result: {},
+    });
+  });
+
   test("events stream on the originating request id", async () => {
     const core: RuntimeCore = {
       handle: async (_method, _params, context) => {

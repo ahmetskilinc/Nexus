@@ -1,4 +1,9 @@
-import type { AgentMessage, Effort, RuntimeEmitter } from "@nexus/protocol";
+import type {
+  AgentMessage,
+  Effort,
+  EphemeralImage,
+  RuntimeEmitter,
+} from "@nexus/protocol";
 import { asArray, asString, get, nullEmitter } from "@nexus/protocol";
 import { anthropicThinkingTier, supportsEffort } from "../capabilities";
 import { openSse, SseParser } from "../sse";
@@ -22,6 +27,7 @@ export class AnthropicProvider implements Provider {
     private endpoint: string,
     private headers: Headers,
     private toolSchemas: unknown[],
+    private images: EphemeralImage[] = [],
   ) {}
 
   /// The stock Anthropic API-key configuration.
@@ -31,6 +37,7 @@ export class AnthropicProvider implements Provider {
     systemPrompt: string,
     apiKey: string,
     toolSchemas: unknown[],
+    images: EphemeralImage[] = [],
   ): AnthropicProvider {
     return new AnthropicProvider(
       "Anthropic",
@@ -43,6 +50,7 @@ export class AnthropicProvider implements Provider {
         ["anthropic-version", ANTHROPIC_VERSION],
       ],
       toolSchemas,
+      images,
     );
   }
 
@@ -57,7 +65,7 @@ export class AnthropicProvider implements Provider {
       max_tokens: 8192,
       system: this.systemPrompt,
       tools: this.toolSchemas,
-      messages: messages(history),
+      messages: messages(history, this.images),
     };
     // Map the unified effort onto an extended-thinking budget for models that
     // support it. `max_tokens` scales above the budget (API invariant); an
@@ -75,6 +83,9 @@ export class AnthropicProvider implements Provider {
     // deltas and hands back a reconstructed `{ content: [...] }` response
     // consumed below exactly like a non-streaming POST would be.
     body.stream = true;
+    // Images are deliberately one-shot: a retry or later tool round never
+    // silently re-sends private pixels.
+    this.images = [];
     const response = await stream(
       fetchFn,
       this.endpoint,

@@ -1,4 +1,9 @@
-import type { PendingApproval, Session, TranscriptItem } from "@nexus/protocol";
+import type {
+  PendingApproval,
+  PendingQuestion,
+  Session,
+  TranscriptItem,
+} from "@nexus/protocol";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { buttonVariants } from "@/components/ui/button";
@@ -11,6 +16,7 @@ import { BrandMark } from "./BrandMark";
 import { CommandCard } from "./CommandCard";
 import { BugIcon, CompassIcon, ReviewIcon, WrenchIcon } from "./Icons";
 import { Markdown } from "./Markdown";
+import { QuestionCard } from "./QuestionCard";
 import { SubagentCard } from "./SubagentCard";
 import { TodoCard } from "./TodoCard";
 import { ToolCall } from "./ToolCall";
@@ -56,7 +62,9 @@ function ChatStageImpl({
   workspaceName,
   resolvedTheme,
   pendingApproval,
+  pendingQuestion,
   onApprovalRespond,
+  onQuestionRespond,
   onApprovalAlwaysAllow,
   onSuggestion,
   onAtBottomChange,
@@ -66,7 +74,9 @@ function ChatStageImpl({
   workspaceName: string;
   resolvedTheme: "light" | "dark";
   pendingApproval?: PendingApproval;
+  pendingQuestion?: PendingQuestion;
   onApprovalRespond: (approved: boolean) => void;
+  onQuestionRespond: (answer: string) => void;
   onApprovalAlwaysAllow: () => void;
   onSuggestion: (prompt: string) => void;
   onAtBottomChange: (atBottom: boolean) => void;
@@ -127,6 +137,7 @@ function ChatStageImpl({
     running,
     lastDetail,
     Boolean(pendingApproval),
+    Boolean(pendingQuestion),
     scrollToBottom,
   ]);
 
@@ -169,8 +180,15 @@ function ChatStageImpl({
                 onAlwaysAllow={onApprovalAlwaysAllow}
               />
             ) : null}
+            {pendingQuestion ? (
+              <QuestionCard
+                question={pendingQuestion}
+                onRespond={onQuestionRespond}
+              />
+            ) : null}
             {running &&
             !pendingApproval &&
+            !pendingQuestion &&
             items.at(-1)?.kind !== "assistant" ? (
               <WorkingIndicator />
             ) : null}

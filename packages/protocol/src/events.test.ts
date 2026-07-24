@@ -15,6 +15,13 @@ describe("parseRuntimeEvent", () => {
       { type: "tool_result", id: "1", name: "read_file", preview: "ok" },
       { type: "command_output", callId: "c", stream: "stderr", chunk: "x" },
       { type: "command_end", callId: "c", exitCode: 0, timedOut: false },
+      {
+        type: "user_question",
+        callId: "c",
+        question: "Which database should I use?",
+        choices: ["PostgreSQL", "SQLite"],
+        allowFreeform: true,
+      },
       { type: "plan", title: "T", markdown: "# t" },
       { type: "research", title: "T", markdown: "# t" },
       { type: "todos", todos: [{ content: "a", status: "pending" }] },
@@ -69,6 +76,28 @@ describe("parseRuntimeEvent", () => {
         arguments: "{}",
       }),
     ).toMatchObject({ kind: "mcp" });
+  });
+
+  test("user questions default freeform and reject blank fields", () => {
+    expect(
+      parseRuntimeEvent({
+        type: "user_question",
+        callId: "c",
+        question: "Continue?",
+      }),
+    ).toEqual({
+      type: "user_question",
+      callId: "c",
+      question: "Continue?",
+      allowFreeform: true,
+    });
+    expect(
+      parseRuntimeEvent({
+        type: "user_question",
+        callId: "",
+        question: "Continue?",
+      }),
+    ).toBeUndefined();
   });
 
   test("todos tolerance: bad statuses default, malformed items drop", () => {

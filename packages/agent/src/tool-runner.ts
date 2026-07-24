@@ -1,6 +1,6 @@
 import type { McpHub } from "@nexus/mcp";
 import type { AgentMessage, RuntimeEmitter } from "@nexus/protocol";
-import { asRecord, asString, ToolError } from "@nexus/protocol";
+import { asArray, asRecord, asString, ToolError } from "@nexus/protocol";
 import type { ToolCall } from "@nexus/providers";
 import {
   applyMutation,
@@ -13,7 +13,7 @@ import {
   webSearch,
 } from "@nexus/tools";
 import type { CheckpointRecorder } from "@nexus/workspace";
-import type { ApprovalMailbox } from "./approvals";
+import type { ApprovalMailbox, QuestionMailbox } from "./approvals";
 import { runCommandTool } from "./command-tool";
 import { type ApprovalMode, requiresApproval, toolMode } from "./modes";
 import type { SubagentLauncher } from "./subagent";
@@ -59,6 +59,7 @@ export class ToolRunner {
       subagent: SubagentLauncher;
       signal: AbortSignal;
       commandTimeoutMs?: number;
+      questionMailbox: QuestionMailbox;
     },
   ) {}
 
@@ -140,6 +141,8 @@ export class ToolRunner {
         });
       case "todo":
         return todoTool(emitter, id, argumentsJson);
+      case "askUser":
+        return this.askUser(id, argumentsJson);
       case "plan":
         return planTool(emitter, id, argumentsJson);
       case "research":
@@ -240,6 +243,43 @@ export class ToolRunner {
         return `Error: unknown tool "${name}".`;
       }
     }
+  }
+
+  private async askUser(
+    callId: string,
+    argumentsJson: string,
+  ): Promise<string> {
+    const args = asRecord(parseToolArgs(argumentsJson)) ?? {};
+    const question = (asString(args.question) ?? "").trim();
+    if (!question) return 'Error: "question" is required.';
+    if (question.length > 8_000)
+      return 'Error: "question" must be at most 8000 characters.';
+    const choices = (asArray(args.choices) ?? [])
+      .flatMap((choice) => {
+        const text = asString(choice)?.trim();
+        return text && text.length <= 500 ? [text] : [];
+      })
+      .filter((choice, index, all) => all.indexOf(choice) === index)
+      .slice(0, 8);
+    const allowFreeform =
+      typeof args.allowFreeform === "boolean" ? args.allowFreeform : true;
+    if (!allowFreeform && choices.length === 0)
+      return 'Error: provide choices when "allowFreeform" is false.';
+
+    this.options.emitter.emit({
+      type: "user_question",
+      callId,
+      question,
+      ...(choices.length > 0 ? { choices } : {}),
+      allowFreeform,
+    });
+    const answer = await this.options.questionMailbox.wait(
+      callId,
+      this.options.signal,
+    );
+    return answer === undefined
+      ? "The user did not answer this question because the run was cancelled."
+      : `User answered: ${answer}`;
   }
 
   private async webTool(name: string, argumentsJson: string): Promise<string> {

@@ -12,6 +12,8 @@ export type ToolKind =
   | "command"
   /// Emits a `todos` UI event; touches nothing.
   | "todo"
+  /// Pauses the current run to collect a focused user answer.
+  | "askUser"
   /// Emits a `plan` UI event carrying a feature-plan document; touches
   /// nothing. Registered only in Plan mode.
   | "plan"

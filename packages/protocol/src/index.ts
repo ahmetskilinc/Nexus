@@ -23,6 +23,7 @@ export {
   get,
 } from "./json";
 export type { AgentMessage, TodoItem, Usage } from "./messages";
+export type { PendingQuestion, UserQuestion } from "./questions";
 export type {
   AuthenticationMethod,
   Effort,
@@ -32,7 +33,11 @@ export type {
   ProviderKind,
   ProviderProfile,
 } from "./providers";
-export type { CompactAgentParams, StartAgentParams } from "./requests";
+export type {
+  CompactAgentParams,
+  EphemeralImage,
+  StartAgentParams,
+} from "./requests";
 export { ToolError } from "./tool-error";
 export type {
   HostMessage,

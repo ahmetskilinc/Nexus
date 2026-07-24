@@ -1,4 +1,4 @@
-import type { AppState, Session } from "@nexus/protocol";
+import type { AppState, EphemeralImage, Session } from "@nexus/protocol";
 import { useEffect, useState } from "react";
 import type { AgentRunApi } from "../hooks/useAgentRun";
 import {
@@ -77,6 +77,8 @@ export function ChatPane({
 }) {
   const [prompt, setPrompt] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
+  // Image bytes live only in this mounted draft, never in AppState/session.
+  const [images, setImages] = useState<EphemeralImage[]>([]);
   const [atBottom, setAtBottom] = useState(true);
 
   const running = agent.isRunning(session.id);
@@ -117,9 +119,10 @@ export function ChatPane({
       compact();
       return;
     }
-    if (agent.send(session.id, prompt, attachments)) {
+    if (agent.send(session.id, prompt, attachments, images)) {
       setPrompt("");
       setAttachments([]);
+      setImages([]);
     }
   }
 
@@ -171,10 +174,14 @@ export function ChatPane({
           workspaceName={workspaceName}
           resolvedTheme={resolvedTheme}
           pendingApproval={agent.pendingApprovalFor(session.id)}
+          pendingQuestion={agent.pendingQuestionFor(session.id)}
           onApprovalRespond={(approved) =>
             agent.respondToApproval(session.id, approved)
           }
           onApprovalAlwaysAllow={() => agent.alwaysAllowCommand(session.id)}
+          onQuestionRespond={(answer) =>
+            agent.respondToQuestion(session.id, answer)
+          }
           onSuggestion={setPrompt}
           onAtBottomChange={setAtBottom}
         />
@@ -209,6 +216,8 @@ export function ChatPane({
           atBottom={atBottom}
           attachments={attachments}
           onAttachmentsChange={setAttachments}
+          images={images}
+          onImagesChange={setImages}
           files={files}
           onEnsureFiles={onEnsureFiles}
           session={session}

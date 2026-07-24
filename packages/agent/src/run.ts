@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import { McpHub } from "@nexus/mcp";
 import type {
   AgentMessage,
+  EphemeralImage,
   Effort,
   McpServerConfig,
   RuntimeEmitter,
@@ -31,7 +32,7 @@ import {
   toolSchemas,
 } from "@nexus/tools";
 import { CheckpointRecorder, memoryPromptBlock } from "@nexus/workspace";
-import type { ApprovalMailbox } from "./approvals";
+import type { ApprovalMailbox, QuestionMailbox } from "./approvals";
 import { type Compaction, compactOnce } from "./compact";
 import { augment, loadInstructionFile } from "./instructions";
 import { type RunResult, runLoop, Summarizer } from "./loop";
@@ -47,6 +48,8 @@ export type RunParams = {
   auth: AuthMethod;
   workspacePath: string;
   history: AgentMessage[];
+  /// Rendered-memory images for this first provider request only.
+  images?: EphemeralImage[];
   previousOpenAIResponseId?: string;
   effort: Effort;
   approvalMode: ApprovalMode;
@@ -168,6 +171,7 @@ export async function run(
   deps: RunDeps,
   params: RunParams,
   mailbox: ApprovalMailbox,
+  questionMailbox: QuestionMailbox,
 ): Promise<RunResult> {
   const credential = await resolveCredential(deps.credentials, params);
   let workspace: string;
@@ -212,6 +216,7 @@ export async function run(
       webAccess: params.webAccess,
       subagent,
       signal: deps.signal,
+      questionMailbox,
     });
 
     const basePrompt =
@@ -362,6 +367,7 @@ function buildProvider(
         systemPrompt,
         credential.apiKey,
         assembleSchemas(params.webAccess, mode, hub, anthropicWrapSchema),
+        params.images,
       ),
       summarizer,
     };
@@ -377,6 +383,7 @@ function buildProvider(
         endpoint,
         headers,
         assembleSchemas(params.webAccess, mode, hub, anthropicWrapSchema),
+        params.images,
       ),
       summarizer,
     };
@@ -397,6 +404,7 @@ function buildProvider(
         params.previousOpenAIResponseId,
         params.history,
         schemas,
+        params.images,
       ),
       summarizer,
     };

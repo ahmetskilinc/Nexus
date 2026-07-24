@@ -36,6 +36,7 @@ export function isAvailable(
         schema.kind === "readOnly" ||
         schema.kind === "web" ||
         schema.kind === "subAgent" ||
+        schema.kind === "askUser" ||
         schema.kind === "research"
       );
   }

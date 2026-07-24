@@ -100,6 +100,16 @@ export class RuntimeServer {
       this.respond(id, {});
       return;
     }
+    if (method === "agent.answer_question") {
+      const record = asRecord(params);
+      this.registry.deliverQuestionAnswer(
+        asString(record?.runId) ?? "",
+        asString(record?.callId) ?? "",
+        asString(record?.answer) ?? "",
+      );
+      this.respond(id, {});
+      return;
+    }
     if (!this.core || !this.config) {
       this.respondError(id, "The runtime is not initialized.");
       return;
@@ -120,6 +130,9 @@ export class RuntimeServer {
         config: this.config,
         onApproval: (handler) => {
           handle.deliverApproval = handler;
+        },
+        onQuestionAnswer: (handler) => {
+          handle.deliverQuestionAnswer = handler;
         },
       });
       if (this.registry.trySettle(id)) this.respond(id, result ?? {});

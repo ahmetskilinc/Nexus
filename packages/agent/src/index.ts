@@ -1,4 +1,9 @@
-export { ApprovalMailbox, type ApprovalReply } from "./approvals";
+export {
+  ApprovalMailbox,
+  type ApprovalReply,
+  QuestionMailbox,
+  type QuestionReply,
+} from "./approvals";
 export { runCommandTool } from "./command-tool";
 export { type Compaction, compactOnce, type Summarize } from "./compact";
 export {

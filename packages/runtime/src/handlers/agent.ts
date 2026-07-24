@@ -1,5 +1,6 @@
 import {
   ApprovalMailbox,
+  QuestionMailbox,
   compact,
   type CredentialResolver,
   DEFAULT_CONTEXT_TOKENS,
@@ -9,7 +10,11 @@ import {
   run,
 } from "@nexus/agent";
 import { type CredentialStore, signInChatGpt, signInKimi } from "@nexus/auth";
-import type { AgentMessage, McpServerConfig } from "@nexus/protocol";
+import type {
+  AgentMessage,
+  EphemeralImage,
+  McpServerConfig,
+} from "@nexus/protocol";
 import {
   asArray,
   asBoolean,
@@ -24,6 +29,7 @@ import {
   parseAuthMethod,
   parseEffort,
   parseProviderKind,
+  supportsImages,
 } from "@nexus/providers";
 import { commandEnvironmentFromString } from "@nexus/tools";
 import type { CoreContext } from "../core";
@@ -74,6 +80,38 @@ function parseHistory(value: unknown): AgentMessage[] {
   });
 }
 
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const MAX_IMAGES = 4;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+function parseImages(value: unknown): EphemeralImage[] {
+  const items = asArray(value) ?? [];
+  if (items.length > MAX_IMAGES)
+    throw RuntimeError.msg(`Attach at most ${MAX_IMAGES} images.`);
+  return items.map((item) => {
+    const record = asRecord(item);
+    const name = asString(record?.name);
+    const mediaType = asString(record?.mediaType);
+    const dataUrl = asString(record?.dataUrl);
+    const size = asNumber(record?.size);
+    if (
+      !name ||
+      !mediaType ||
+      !IMAGE_TYPES.has(mediaType) ||
+      !dataUrl?.startsWith(`data:${mediaType};base64,`) ||
+      !size ||
+      size > MAX_IMAGE_BYTES
+    )
+      throw RuntimeError.msg("One or more image attachments are invalid.");
+    return {
+      name,
+      mediaType: mediaType as EphemeralImage["mediaType"],
+      dataUrl,
+      size,
+    };
+  });
+}
+
 function parseMcpServers(value: unknown): McpServerConfig[] {
   const items = asArray(value) ?? [];
   const servers: McpServerConfig[] = [];
@@ -114,13 +152,19 @@ export async function handleAgentRun(
   credentials: CredentialResolver,
 ) {
   const record = asRecord(params) ?? {};
+  const kind = parseProviderKind(stringParam(params, "providerKind"));
+  const model = stringParam(params, "model");
+  const images = parseImages(record.images);
+  if (images.length > 0 && !supportsImages(kind, model))
+    throw RuntimeError.msg("The selected model does not support image input.");
   const runParams: RunParams = {
     providerId: stringParam(params, "providerId"),
-    kind: parseProviderKind(stringParam(params, "providerKind")),
-    model: stringParam(params, "model"),
+    kind,
+    model,
     auth: parseAuthMethod(stringParam(params, "auth")),
     workspacePath: stringParam(params, "workspacePath"),
     history: parseHistory(record.history),
+    images,
     previousOpenAIResponseId: asString(record.previousOpenAIResponseId),
     effort:
       (asString(record.effort) !== undefined
@@ -148,8 +192,12 @@ export async function handleAgentRun(
   };
 
   const mailbox = new ApprovalMailbox();
+  const questionMailbox = new QuestionMailbox();
   context.onApproval((callId, approved) =>
     mailbox.deliver({ callId, approved }),
+  );
+  context.onQuestionAnswer((callId, answer) =>
+    questionMailbox.deliver({ callId, answer }),
   );
   const result = await run(
     {
@@ -161,6 +209,7 @@ export async function handleAgentRun(
     },
     runParams,
     mailbox,
+    questionMailbox,
   );
   // Estimated cost from the models.dev catalog (USD per million tokens);
   // null when the model has no pricing there.

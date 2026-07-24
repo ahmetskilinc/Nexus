@@ -50,6 +50,7 @@ export type CatalogModel = {
   costInput?: number;
   costOutput?: number;
   outputModalities?: string[];
+  inputModalities?: string[];
   /// Accepted `effort`-type reasoning values (raw models.dev strings), empty
   /// when the model has no effort control.
   effortValues: string[];
@@ -72,12 +73,11 @@ function parseModel(raw: unknown): CatalogModel | undefined {
           : undefined,
       )
       .find((values) => values !== undefined) ?? [];
-  const modalities = asArray(get(raw, "modalities", "output"))?.flatMap(
-    (value) => {
+  const modalities = (key: "input" | "output") =>
+    asArray(get(raw, "modalities", key))?.flatMap((value) => {
       const text = asString(value);
       return text ? [text] : [];
-    },
-  );
+    });
   return {
     id,
     name: asString(get(raw, "name")) ?? "",
@@ -89,7 +89,8 @@ function parseModel(raw: unknown): CatalogModel | undefined {
     maxOutput: asNumber(get(raw, "limit", "output")),
     costInput: asNumber(get(raw, "cost", "input")),
     costOutput: asNumber(get(raw, "cost", "output")),
-    outputModalities: modalities,
+    outputModalities: modalities("output"),
+    inputModalities: modalities("input"),
     effortValues,
   };
 }

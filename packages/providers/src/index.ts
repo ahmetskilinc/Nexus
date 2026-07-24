@@ -19,6 +19,7 @@ export {
   openaiEffortValue,
   parseEffort,
   supportsEffort,
+  supportsImages,
 } from "./capabilities";
 export {
   catalogModels,

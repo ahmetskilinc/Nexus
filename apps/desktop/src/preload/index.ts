@@ -139,6 +139,8 @@ const api = {
     }>,
   approveEdit: (runId: string, callId: string, approved: boolean) =>
     ipcRenderer.invoke("runtime:approve", runId, callId, approved),
+  answerQuestion: (runId: string, callId: string, answer: string) =>
+    ipcRenderer.invoke("runtime:answer-question", runId, callId, answer),
   signIn: (providerId: string, providerKind: string) =>
     ipcRenderer.invoke("oauth:signin", providerId, providerKind) as Promise<
       Record<string, unknown>

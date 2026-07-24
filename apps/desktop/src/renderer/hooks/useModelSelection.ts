@@ -27,6 +27,8 @@ export type ModelSelection = {
   currentModel?: string;
   currentEffort?: Effort;
   effortOptions: Effort[];
+  /// Image input is advertised by the selected model's catalog metadata.
+  supportsImages: boolean;
   requestModels: (providerId: string) => void;
   selectModel: (providerId: string, model: string) => void;
   selectEffort: (effort: Effort) => void;
@@ -102,6 +104,11 @@ export function modelSelectionFor(
     if (session) apply(clearSessionEffort(session.id));
   }
 
+  const currentInfo = resolved.providerId
+    ? catalog.modelsByProvider[resolved.providerId]?.models?.find(
+        (item) => item.id === resolved.model,
+      )
+    : undefined;
   return {
     providers: state?.providers ?? [],
     modelsByProvider: catalog.modelsByProvider,
@@ -111,6 +118,7 @@ export function modelSelectionFor(
     effortOptions: state
       ? resolveEffortOptions(state, session, catalog.modelsByProvider)
       : [],
+    supportsImages: currentInfo?.modalities?.includes("image") ?? false,
     requestModels: catalog.requestModels,
     selectModel,
     selectEffort,

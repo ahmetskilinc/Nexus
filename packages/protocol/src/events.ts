@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ApprovalRequest } from "./approvals";
 import type { TodoItem } from "./messages";
+import type { UserQuestion } from "./questions";
 
 /// Every streaming event the runtime emits during a run. This union — together
 /// with `runtimeEventSchema` below — is the runtime→app contract.
@@ -35,6 +36,8 @@ export type RuntimeEvent =
       timedOut: boolean;
     }
   | ({ type: "approval_request" } & ApprovalRequest)
+  // A focused question that pauses the run until the user answers.
+  | ({ type: "user_question" } & UserQuestion)
   // A feature plan published by the write_plan tool (Plan mode).
   | { type: "plan"; title: string; markdown: string }
   // A read-only codebase report published by write_research.
@@ -138,6 +141,13 @@ export const runtimeEventSchema: z.ZodType<
   approvalRequestVariants.edit,
   approvalRequestVariants.command,
   approvalRequestVariants.mcp,
+  z.object({
+    type: z.literal("user_question"),
+    callId: z.string().min(1),
+    question: z.string().min(1),
+    choices: z.array(z.string().min(1)).optional(),
+    allowFreeform: z.boolean().catch(true),
+  }),
   z.object({
     type: z.literal("plan"),
     title: z.string(),

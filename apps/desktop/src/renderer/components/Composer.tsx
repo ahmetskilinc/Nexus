@@ -1,5 +1,5 @@
 import { Menu } from "@base-ui/react/menu";
-import type { ApprovalMode, Session } from "@nexus/protocol";
+import type { ApprovalMode, EphemeralImage, Session } from "@nexus/protocol";
 import { m } from "motion/react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -19,6 +19,7 @@ import {
   FileIcon,
   FolderIcon,
   StopIcon,
+  UploadIcon,
 } from "./Icons";
 import { MentionMenu } from "./MentionMenu";
 import { ModelEffortMenu } from "./ModelEffortMenu";
@@ -26,6 +27,9 @@ import { ModelEffortMenu } from "./ModelEffortMenu";
 /// Longest @-mention suggestion list shown at once.
 const MAX_MENTION_SUGGESTIONS = 8;
 const MAX_DROPPED_TEXT_BYTES = 64 * 1024;
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const MAX_IMAGES = 4;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const TEXT_FILE_EXTENSIONS = new Set([
   "txt",
   "log",
@@ -122,6 +126,8 @@ export function Composer({
   atBottom,
   attachments,
   onAttachmentsChange,
+  images,
+  onImagesChange,
   files,
   onEnsureFiles,
   session,
@@ -148,6 +154,9 @@ export function Composer({
   /// Workspace-relative paths attached via @-mentions, shown as chips.
   attachments: string[];
   onAttachmentsChange: (next: string[]) => void;
+  /// Image bytes stay in this draft and are sent only with its first request.
+  images: EphemeralImage[];
+  onImagesChange: (next: EphemeralImage[]) => void;
   /// Workspace file index the @-mention menu autocompletes over.
   files: string[];
   /// Lazily populate `files` when the mention menu first opens.
@@ -232,6 +241,31 @@ export function Composer({
       text.length > limited.length ? "\n[Attachment truncated]" : "";
     const block = `Context from dropped file ${file.name}:\n\n\`\`\`\n${limited}${suffix}\n\`\`\``;
     onPromptChange(prompt ? `${prompt}\n\n${block}` : block);
+  }
+
+  async function ingestImages(files: FileList | null) {
+    const candidates = Array.from(files ?? []).filter(
+      (file) => IMAGE_TYPES.has(file.type) && file.size <= MAX_IMAGE_BYTES,
+    );
+    const available = MAX_IMAGES - images.length;
+    const next = await Promise.all(
+      candidates.slice(0, Math.max(0, available)).map(
+        (file) =>
+          new Promise<EphemeralImage>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () =>
+              resolve({
+                name: file.name,
+                mediaType: file.type as EphemeralImage["mediaType"],
+                dataUrl: String(reader.result),
+                size: file.size,
+              });
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(file);
+          }),
+      ),
+    );
+    if (next.length > 0) onImagesChange([...images, ...next]);
   }
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
@@ -370,9 +404,32 @@ export function Composer({
               />
             ) : null}
 
-            {/* Attachment chips from @-mentions; the agent reads these files. */}
-            {attachments.length > 0 ? (
+            {/* @-mentioned workspace files plus ephemeral provider-bound images. */}
+            {attachments.length > 0 || images.length > 0 ? (
               <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
+                {images.map((image) => (
+                  <span
+                    key={`${image.name}-${image.size}`}
+                    className="flex items-center gap-1.5 rounded-md border border-primary/20 bg-primary/5 py-1 pr-1 pl-2 text-[11px] text-foreground"
+                  >
+                    <img
+                      src={image.dataUrl}
+                      alt=""
+                      className="size-5 rounded-sm object-cover"
+                    />
+                    {image.name}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${image.name}`}
+                      onClick={() =>
+                        onImagesChange(images.filter((item) => item !== image))
+                      }
+                      className="grid size-4 place-items-center rounded text-faint transition-colors hover:bg-accent hover:text-foreground"
+                    >
+                      <CloseIcon size={10} />
+                    </button>
+                  </span>
+                ))}
                 {attachments.map((path) => (
                   <span
                     key={path}
@@ -418,7 +475,12 @@ export function Composer({
               onBlur={() => setMention(null)}
               onDrop={(event) => {
                 event.preventDefault();
-                void ingestDroppedText(event.dataTransfer.files);
+                const dropped = event.dataTransfer.files;
+                if (
+                  Array.from(dropped).some((file) => IMAGE_TYPES.has(file.type))
+                )
+                  void ingestImages(dropped);
+                else void ingestDroppedText(dropped);
               }}
               onDragOver={(event) => event.preventDefault()}
               onKeyDown={onKeyDown}
@@ -434,6 +496,31 @@ export function Composer({
 
             <div className="flex items-center justify-between px-2.5 pb-2.5 pt-0.5">
               <div className="flex min-w-0 items-center gap-1">
+                <label
+                  title={
+                    models.supportsImages
+                      ? "Attach PNG, JPEG, or WebP (up to 4 × 5 MB)"
+                      : "Select an image-capable model to attach images"
+                  }
+                  className="grid size-7 cursor-pointer place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-40"
+                >
+                  <UploadIcon size={14} />
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    multiple
+                    disabled={
+                      !models.supportsImages ||
+                      running ||
+                      images.length >= MAX_IMAGES
+                    }
+                    onChange={(event) => {
+                      void ingestImages(event.currentTarget.files);
+                      event.currentTarget.value = "";
+                    }}
+                    className="sr-only"
+                  />
+                </label>
                 {contextPercent !== undefined ? (
                   <span
                     title="Estimated context after sending this draft"
@@ -460,6 +547,13 @@ export function Composer({
                 />
               </div>
 
+              {images.length > 0 ? (
+                <span className="mr-2 text-right text-[10px] leading-tight text-muted-foreground">
+                  Sent directly to the provider once.
+                  <br />
+                  Not saved or retried.
+                </span>
+              ) : null}
               {running ? (
                 <m.button
                   type="button"

@@ -7,6 +7,7 @@
 ///  - a stale reply for a different call id is skipped, not delivered;
 ///  - closing the mailbox (run shutdown) resolves any wait as a decline.
 export type ApprovalReply = { callId: string; approved: boolean };
+export type QuestionReply = { callId: string; answer: string };
 
 export class ApprovalMailbox {
   private queue: ApprovalReply[] = [];
@@ -60,5 +61,56 @@ export class ApprovalMailbox {
     const waiter = this.waiter;
     this.waiter = undefined;
     waiter?.resolve(false);
+  }
+}
+
+/// A call-id-addressed mailbox for answers to `ask_user`. It has the same
+/// buffering and shutdown semantics as approvals, but carries user text.
+export class QuestionMailbox {
+  private queue: QuestionReply[] = [];
+  private waiter:
+    | { callId: string; resolve: (answer: string | undefined) => void }
+    | undefined;
+  private closed = false;
+
+  deliver(reply: QuestionReply) {
+    if (this.waiter) {
+      if (reply.callId === this.waiter.callId) {
+        const { resolve } = this.waiter;
+        this.waiter = undefined;
+        resolve(reply.answer);
+      }
+      return;
+    }
+    this.queue.push(reply);
+  }
+
+  wait(callId: string, signal?: AbortSignal): Promise<string | undefined> {
+    while (this.queue.length > 0) {
+      const reply = this.queue.shift();
+      if (reply && reply.callId === callId)
+        return Promise.resolve(reply.answer);
+    }
+    if (this.closed || signal?.aborted) return Promise.resolve(undefined);
+    return new Promise((resolve) => {
+      this.waiter = { callId, resolve };
+      signal?.addEventListener(
+        "abort",
+        () => {
+          if (this.waiter?.callId === callId) {
+            this.waiter = undefined;
+            resolve(undefined);
+          }
+        },
+        { once: true },
+      );
+    });
+  }
+
+  close() {
+    this.closed = true;
+    const waiter = this.waiter;
+    this.waiter = undefined;
+    waiter?.resolve(undefined);
   }
 }

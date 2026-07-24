@@ -12,6 +12,7 @@ export type RunHandle = {
   settled: boolean;
   agent: boolean;
   deliverApproval?: (callId: string, approved: boolean) => void;
+  deliverQuestionAnswer?: (callId: string, answer: string) => void;
 };
 
 export class RunRegistry {
@@ -75,6 +76,10 @@ export class RunRegistry {
 
   deliverApproval(runId: string, callId: string, approved: boolean) {
     this.runs.get(runId)?.deliverApproval?.(callId, approved);
+  }
+
+  deliverQuestionAnswer(runId: string, callId: string, answer: string) {
+    this.runs.get(runId)?.deliverQuestionAnswer?.(callId, answer);
   }
 
   /// Aborts everything (transport death / shutdown).

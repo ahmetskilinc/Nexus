@@ -1,4 +1,4 @@
-import type { AgentMessage } from "@nexus/protocol";
+import type { AgentMessage, EphemeralImage } from "@nexus/protocol";
 
 /// Wraps one tool schema into the Responses API function shape.
 export function wrapSchema(
@@ -10,10 +10,26 @@ export function wrapSchema(
 }
 
 /// Replays the flat message history as Responses API input items.
-export function input(history: AgentMessage[]): unknown[] {
+export function input(
+  history: AgentMessage[],
+  images: EphemeralImage[] = [],
+): unknown[] {
   return history.map((message) => {
     switch (message.type) {
       case "user":
+        // Image bytes belong only to the latest user turn and are never present
+        // in the persisted canonical history used on retries/follow-up turns.
+        if (message === history.at(-1) && images.length > 0)
+          return {
+            role: "user",
+            content: [
+              { type: "input_text", text: message.text },
+              ...images.map((image) => ({
+                type: "input_image",
+                image_url: image.dataUrl,
+              })),
+            ],
+          };
         return { role: "user", content: message.text };
       case "assistant_text":
         return { role: "assistant", content: message.text };

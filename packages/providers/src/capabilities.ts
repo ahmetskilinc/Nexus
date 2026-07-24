@@ -86,6 +86,12 @@ function isCodex(model: string): boolean {
 /// Whether the model exposes any reasoning-effort / extended-thinking control.
 /// Non-reasoning models reject the parameter, so the request builders gate on
 /// this.
+/// Whether a model can receive image input. Unknown models fail closed so an
+/// image is never sent to a model whose request contract we cannot verify.
+export function supportsImages(kind: ProviderKind, model: string): boolean {
+  return lookup(kind, model)?.inputModalities?.includes("image") ?? false;
+}
+
 export function supportsEffort(kind: ProviderKind, model: string): boolean {
   // Kimi's thinking is model-inherent (no request-side control), and the
   // Anthropic-compat layer's `thinking` parameter support is unverified —

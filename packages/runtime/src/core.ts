@@ -26,6 +26,8 @@ export type CoreContext = {
   /// Lets a long-lived run (agent.run) receive `agent.approve` deliveries
   /// addressed to it while it is in flight.
   onApproval(handler: (callId: string, approved: boolean) => void): void;
+  /// Lets a long-lived run receive a response to an `ask_user` tool call.
+  onQuestionAnswer(handler: (callId: string, answer: string) => void): void;
 };
 
 /// The runtime's method surface, minus the transport-level methods the server
