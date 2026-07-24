@@ -8,6 +8,7 @@ import type {
 import {
   addChangedFiles,
   appendItem,
+  applyCompaction,
   applyEvent,
   dedupeAttachments,
   finishRun,
@@ -97,6 +98,20 @@ describe("applyEvent", () => {
     const next = applyEvent(withTool, "a", text, "item-2", LATER);
     expect(transcript(next, "a")).toHaveLength(2);
     expect(transcript(next, "a")[1]?.kind).toBe("assistant");
+  });
+
+  test("agent_queued adds an informational queue marker", () => {
+    const next = applyEvent(
+      state(),
+      "a",
+      { type: "agent_queued" },
+      "item-1",
+      LATER,
+    );
+    expect(transcript(next, "a")[0]).toMatchObject({
+      kind: "info",
+      title: "Queued",
+    });
   });
 
   test("provider_retry adds an informational recovery marker", () => {
@@ -450,6 +465,9 @@ describe("finishRun", () => {
     });
     const next = finishRun(input, "a", { messages: [] }, LATER);
     expect(next.sessions[0]?.recovery).toBeUndefined();
+    expect(next.sessions[0]?.runJournal).toEqual([
+      { id: "run-1", startedAt: NOW, endedAt: LATER, status: "completed" },
+    ]);
   });
 });
 
@@ -650,5 +668,91 @@ describe("changedFiles accumulation", () => {
     expect(
       after.sessions.find((item) => item.id === "a")?.changedFiles,
     ).toEqual(["src/a.ts"]);
+  });
+});
+
+describe("context meter", () => {
+  const reading: RuntimeEvent = {
+    type: "context",
+    usedTokens: 124_800,
+    contextTokens: 200_000,
+  };
+
+  test("a context event records the reading on its session", () => {
+    const next = applyEvent(state(), "a", reading, "item-1", LATER);
+    expect(next.sessions.find((item) => item.id === "a")?.context).toEqual({
+      usedTokens: 124_800,
+      contextTokens: 200_000,
+    });
+    // It is a reading, not a transcript entry.
+    expect(transcript(next, "a")).toHaveLength(0);
+  });
+
+  test("each reading replaces the last rather than accumulating", () => {
+    const first = applyEvent(state(), "a", reading, "item-1", LATER);
+    const second = applyEvent(
+      first,
+      "a",
+      { type: "context", usedTokens: 8_000, contextTokens: 200_000 },
+      "item-2",
+      LATER,
+    );
+    expect(
+      second.sessions.find((item) => item.id === "a")?.context?.usedTokens,
+    ).toBe(8_000);
+  });
+});
+
+describe("applyCompaction", () => {
+  const folded = [{ type: "user", text: "Summary of the conversation…" }];
+  const result = {
+    messages: folded,
+    summary: "We built the thing.",
+    removedMessages: 12,
+    keptMessages: 4,
+    usedTokens: 900,
+    contextTokens: 200_000,
+  };
+
+  function compacted() {
+    const before = state({
+      sessions: [
+        session("a", {
+          history: [{ type: "user", text: "old" }],
+          openAIResponseId: "resp-1",
+        }),
+        session("b"),
+      ],
+    });
+    return applyCompaction(before, "a", result, "item-1", LATER);
+  }
+
+  test("swaps in the folded history and marks the transcript", () => {
+    const updated = compacted().sessions.find((item) => item.id === "a");
+    expect(updated?.history).toEqual(folded as Session["history"]);
+    expect(updated?.transcript).toHaveLength(1);
+    expect(updated?.transcript[0]?.title).toBe("Context compacted");
+    expect(updated?.transcript[0]?.detail).toContain("12 earlier messages");
+    expect(updated?.transcript[0]?.result).toBe("We built the thing.");
+    expect(updated?.updatedAt).toBe(LATER);
+  });
+
+  test("drops the OpenAI chain, which no longer matches the history", () => {
+    expect(
+      compacted().sessions.find((item) => item.id === "a")?.openAIResponseId,
+    ).toBeUndefined();
+  });
+
+  test("the meter drops immediately, flagged as an estimate", () => {
+    expect(
+      compacted().sessions.find((item) => item.id === "a")?.context,
+    ).toEqual({ usedTokens: 900, contextTokens: 200_000, estimated: true });
+  });
+
+  test("nothing to compact leaves the state untouched", () => {
+    const before = state();
+    expect(
+      applyCompaction(before, "a", { messages: null }, "item-1", LATER),
+    ).toEqual(before);
   });
 });

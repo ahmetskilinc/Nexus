@@ -227,6 +227,18 @@ export function latestSessionId(state: AppState, workspacePath: string) {
     .at(0)?.id;
 }
 
+const MAX_RUN_JOURNAL = 20;
+
+export function appendRunJournal(
+  journal: Session["runJournal"],
+  entry: NonNullable<Session["runJournal"]>[number],
+): Session["runJournal"] {
+  return [
+    ...(journal ?? []).filter((item) => item.id !== entry.id),
+    entry,
+  ].slice(-MAX_RUN_JOURNAL);
+}
+
 export function updateSession(
   state: AppState,
   sessionId: string,
@@ -283,6 +295,21 @@ export function applyEvent(
             ];
       return { ...session, transcript, updatedAt };
     });
+  if (event.type === "agent_queued")
+    return updateSession(state, sessionId, (session) => ({
+      ...session,
+      transcript: [
+        ...session.transcript,
+        {
+          id: itemId,
+          kind: "info",
+          title: "Queued",
+          detail:
+            "Waiting for another agent run to finish. You can stop this run before it starts.",
+        },
+      ],
+      updatedAt,
+    }));
   if (event.type === "provider_retry")
     return updateSession(state, sessionId, (session) => ({
       ...session,
@@ -424,19 +451,24 @@ export function applyEvent(
           }
         : session,
     );
+  // A turn finished; refresh the context meter with the provider's own token
+  // count for the conversation as it now stands.
+  if (event.type === "context")
+    return updateSession(state, sessionId, (session) => ({
+      ...session,
+      context: {
+        usedTokens: event.usedTokens,
+        contextTokens: event.contextTokens,
+      },
+      updatedAt,
+    }));
   // Compaction folded older turns away; mark the spot in the transcript so the
   // user knows earlier context is now a summary.
   if (event.type === "compacted")
     return appendItem(
       state,
       sessionId,
-      {
-        id: itemId,
-        kind: "info",
-        title: "Context compacted",
-        detail: `Summarized ${event.removedMessages} earlier messages to fit the context window; the ${event.keptMessages} most recent were kept verbatim.`,
-        result: event.summary,
-      },
+      compactionItem(itemId, event),
       updatedAt,
     );
   // A sub-agent took a step; append a short label to its parent spawn_agent
@@ -454,6 +486,59 @@ export function applyEvent(
     }));
   }
   return state;
+}
+
+/// The transcript marker for a compaction, shared by the automatic path (the
+/// `compacted` event) and the user-triggered one so both read identically.
+function compactionItem(
+  id: string,
+  event: { removedMessages: number; keptMessages: number; summary: string },
+): TranscriptItem {
+  return {
+    id,
+    kind: "info",
+    title: "Context compacted",
+    detail: `Summarized ${event.removedMessages} earlier messages to fit the context window; the ${event.keptMessages} most recent were kept verbatim.`,
+    result: event.summary,
+  };
+}
+
+/// Applies a user-triggered compaction's result. The runtime already did the
+/// summarizing; this swaps in the folded history, drops the OpenAI response-id
+/// chain (which no longer matches it — the same reason `provider.noteCompaction`
+/// exists), and marks the transcript. Returns the state unchanged when there
+/// was nothing to compact.
+export function applyCompaction(
+  state: AppState,
+  sessionId: string,
+  result: Record<string, unknown>,
+  itemId: string,
+  updatedAt: string,
+): AppState {
+  const messages = Array.isArray(result.messages) ? result.messages : undefined;
+  if (!messages) return state;
+  const item = compactionItem(itemId, {
+    removedMessages: numberOr(result.removedMessages, 0),
+    keptMessages: numberOr(result.keptMessages, messages.length),
+    summary: typeof result.summary === "string" ? result.summary : "",
+  });
+  const usedTokens = numberOr(result.usedTokens, undefined);
+  const contextTokens = numberOr(result.contextTokens, undefined);
+  return updateSession(state, sessionId, (session) => ({
+    ...session,
+    history: messages as Session["history"],
+    openAIResponseId: undefined,
+    context:
+      usedTokens !== undefined && contextTokens !== undefined
+        ? { usedTokens, contextTokens, estimated: true }
+        : session.context,
+    transcript: [...session.transcript, item],
+    updatedAt,
+  }));
+}
+
+function numberOr<T>(value: unknown, fallback: T): number | T {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 export function finishRun(
@@ -490,6 +575,14 @@ export function finishRun(
         : session.costUsd,
     checkpoint: checkpoint ?? session.checkpoint,
     recovery: undefined,
+    runJournal: session.recovery
+      ? appendRunJournal(session.runJournal, {
+          id: session.recovery.runId ?? "unknown",
+          startedAt: session.recovery.startedAt,
+          endedAt: updatedAt,
+          status: "completed",
+        })
+      : session.runJournal,
     updatedAt,
   }));
 }

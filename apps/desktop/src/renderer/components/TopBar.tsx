@@ -1,5 +1,6 @@
 import type { Session } from "@nexus/protocol";
 import { formatTokens, formatUsd } from "../lib/format";
+import { ContextMeter } from "./ContextMeter";
 import { CloseIcon } from "./Icons";
 import { Hint } from "./Tooltip";
 
@@ -19,6 +20,9 @@ export function TopBar({
   session,
   focused = true,
   onClose,
+  onCompact = () => {},
+  compacting = false,
+  running = false,
 }: {
   /// True when the fixed corner controls float over this bar's left edge —
   /// the leftmost bar while the sidebar is collapsed.
@@ -29,6 +33,12 @@ export function TopBar({
   session?: Session;
   focused?: boolean;
   onClose?: () => void;
+  /// Compact this session's history now (the context meter is the button).
+  /// Omitted by the sessionless bar over the Welcome screen, which has no
+  /// meter to click.
+  onCompact?: () => void;
+  compacting?: boolean;
+  running?: boolean;
 }) {
   const inChat = Boolean(session && session.transcript.length > 0);
   const usage = session?.usage;
@@ -53,6 +63,12 @@ export function TopBar({
           clearRight ? "pr-[var(--corner-controls,0px)]" : "pr-1"
         }`}
       >
+        <ContextMeter
+          session={session}
+          onCompact={onCompact}
+          compacting={compacting}
+          disabled={running}
+        />
         {usage ? (
           <Hint side="bottom" label="Session tokens in / out · estimated cost">
             <span className="app-no-drag flex items-center gap-2 font-mono text-[11px] text-faint tabular-nums">

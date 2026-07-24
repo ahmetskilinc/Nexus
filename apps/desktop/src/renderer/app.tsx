@@ -74,6 +74,17 @@ export function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
   const [workspaceSearch, setWorkspaceSearch] = useState(false);
+  // Right-panel previews belong to the focused session; this one-shot request
+  // lets its current file become an explicit composer attachment without
+  // coupling the preview component to ChatPane's local draft state.
+  const [attachmentRequest, setAttachmentRequest] = useState<{
+    sessionId: string;
+    path: string;
+  }>();
+  const [draftContextRequest, setDraftContextRequest] = useState<{
+    sessionId: string;
+    text: string;
+  }>();
 
   // The single mutation funnel: leaves receive `apply` and named ops, never
   // the raw whole-state setter. Functional updates mean an op fired after an
@@ -100,6 +111,9 @@ export function App() {
     fetchRemotes,
     pullCommits,
     pushCommits,
+    revertCommit,
+    stashChanges,
+    applyLatestStash,
     stageFiles,
     unstageFiles,
     commitChanges,
@@ -153,7 +167,12 @@ export function App() {
     setLeftOpen(!isNarrow);
   }, [isNarrow, setLeftOpen]);
 
-  const agent = useAgentRun({ state, setState, setError });
+  const agent = useAgentRun({
+    state,
+    setState,
+    setError,
+    onWorkspaceMutation: editor.refreshOpenFiles,
+  });
 
   const catalog = useModelCatalog();
 
@@ -202,6 +221,19 @@ export function App() {
       stale = true;
     };
   }, [workspacePath]);
+
+  // Re-read the file index, Git state, and open previews when an external
+  // editor changes the workspace while Nexus is in the background. This avoids
+  // silently showing stale source after the user returns to the app.
+  useEffect(() => {
+    if (!workspacePath) return;
+    const refreshWorkspace = () => {
+      void reloadFiles();
+      editor.refreshOpenFiles();
+    };
+    window.addEventListener("focus", refreshWorkspace);
+    return () => window.removeEventListener("focus", refreshWorkspace);
+  }, [workspacePath, reloadFiles, editor.refreshOpenFiles]);
 
   // Auto-open the research panel the first time a session gains a report.
   const autoOpenedResearch = useRef<Set<string>>(new Set());
@@ -349,6 +381,7 @@ export function App() {
       await window.nexus.restoreCheckpoint(checkpoint.id);
       apply(markCheckpointRestored(current.id, new Date().toISOString()));
       await reloadFiles();
+      editor.refreshOpenFiles();
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -372,6 +405,7 @@ export function App() {
     try {
       await window.nexus.restoreLatestMutation(checkpoint.id, filePath);
       await reloadFiles();
+      editor.refreshOpenFiles();
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -402,6 +436,7 @@ export function App() {
         ),
       );
       await reloadFiles();
+      editor.refreshOpenFiles();
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -545,6 +580,23 @@ export function App() {
                               onDeleteBranch={deleteBranch}
                               onRenameBranch={renameBranch}
                               onOpenSettings={() => setShowSettings(true)}
+                              attachmentPath={
+                                attachmentRequest?.sessionId === paneSession.id
+                                  ? attachmentRequest.path
+                                  : undefined
+                              }
+                              onAttachmentConsumed={() =>
+                                setAttachmentRequest(undefined)
+                              }
+                              draftContext={
+                                draftContextRequest?.sessionId ===
+                                paneSession.id
+                                  ? draftContextRequest.text
+                                  : undefined
+                              }
+                              onDraftContextConsumed={() =>
+                                setDraftContextRequest(undefined)
+                              }
                               focused={paneSession.id === current.id}
                               onFocusPane={
                                 showSplit
@@ -639,6 +691,9 @@ export function App() {
                   onUnstageFiles={unstageFiles}
                   onCommit={commitChanges}
                   onDiscardFile={discardFile}
+                  onRevertCommit={revertCommit}
+                  onStash={stashChanges}
+                  onApplyStash={applyLatestStash}
                   sync={sync}
                   onFetch={fetchRemotes}
                   onPull={pullCommits}
@@ -694,6 +749,18 @@ export function App() {
                   treeVisible={treeVisible}
                   treeWidth={treeWidth}
                   onOpenFile={editor.openFile}
+                  onAttachFile={(path) => {
+                    if (current)
+                      setAttachmentRequest({ sessionId: current.id, path });
+                  }}
+                  onAttachPreview={(path, content, truncated) => {
+                    if (!current) return;
+                    const suffix = truncated ? "\n[Preview truncated]" : "";
+                    setDraftContextRequest({
+                      sessionId: current.id,
+                      text: `Context from ${path}:\n\n\`\`\`\n${content}${suffix}\n\`\`\``,
+                    });
+                  }}
                   onNewTab={editor.newTab}
                   onCloseTab={editor.closeTab}
                   onActivateTab={editor.activateTab}
@@ -719,6 +786,13 @@ export function App() {
             <WorkspaceSearch
               open={workspaceSearch}
               onOpenFile={editor.openFile}
+              onAttachSnippet={(result) => {
+                if (!current) return;
+                setDraftContextRequest({
+                  sessionId: current.id,
+                  text: `Search result from ${result.path}:${result.line}:\n\n\`\`\`\n${result.text}\n\`\`\``,
+                });
+              }}
               onClose={() => setWorkspaceSearch(false)}
             />
 

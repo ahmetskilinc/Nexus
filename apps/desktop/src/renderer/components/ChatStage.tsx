@@ -14,6 +14,7 @@ import { Markdown } from "./Markdown";
 import { SubagentCard } from "./SubagentCard";
 import { TodoCard } from "./TodoCard";
 import { ToolCall } from "./ToolCall";
+import { WorkspaceMap } from "./WorkspaceMap";
 
 const SUGGESTIONS = [
   {
@@ -140,10 +141,13 @@ function ChatStageImpl({
         onViewportScroll={onScroll}
       >
         {empty ? (
-          <EmptyState
-            workspaceName={workspaceName}
-            onSuggestion={onSuggestion}
-          />
+          <>
+            <EmptyState
+              workspaceName={workspaceName}
+              onSuggestion={onSuggestion}
+            />
+            {session ? <WorkspaceMap /> : null}
+          </>
         ) : (
           <div className="mx-auto w-full max-w-[760px] px-6 pt-4 pb-52">
             {items.map((item, index) => (

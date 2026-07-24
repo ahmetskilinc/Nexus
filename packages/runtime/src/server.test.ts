@@ -131,6 +131,103 @@ describe("RuntimeServer", () => {
     });
   });
 
+  test("serializes agent runs while allowing ordinary requests through", async () => {
+    let releaseFirst: (() => void) | undefined;
+    const started: string[] = [];
+    const core: RuntimeCore = {
+      handle: (method, _params, context) => {
+        if (method === "health") return Promise.resolve({ runtime: "ok" });
+        started.push(context.requestId);
+        if (context.requestId === "run-1")
+          return new Promise((resolve) => {
+            releaseFirst = () => resolve({ done: true });
+          });
+        return Promise.resolve({ done: true });
+      },
+    };
+    const { server, sent } = makeServer(core);
+    await server.handleMessage(INIT);
+    void server.handleMessage({
+      kind: "request",
+      id: "run-1",
+      method: "agent.run",
+      params: {},
+    });
+    void server.handleMessage({
+      kind: "request",
+      id: "run-2",
+      method: "agent.run",
+      params: {},
+    });
+    await server.handleMessage({
+      kind: "request",
+      id: "health",
+      method: "health",
+      params: {},
+    });
+    await settle();
+    expect(started).toEqual(["run-1"]);
+    expect(sent).toContainEqual({
+      kind: "event",
+      id: "run-2",
+      event: { type: "agent_queued" },
+    });
+    expect(sent).toContainEqual({
+      kind: "response",
+      id: "health",
+      ok: true,
+      result: { runtime: "ok" },
+    });
+    releaseFirst?.();
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    expect(started).toEqual(["run-1", "run-2"]);
+  });
+
+  test("cancelling a queued agent run prevents it from starting", async () => {
+    let releaseFirst: (() => void) | undefined;
+    const started: string[] = [];
+    const core: RuntimeCore = {
+      handle: (_method, _params, context) => {
+        started.push(context.requestId);
+        if (context.requestId === "run-1")
+          return new Promise((resolve) => {
+            releaseFirst = () => resolve({ done: true });
+          });
+        return Promise.resolve({ done: true });
+      },
+    };
+    const { server, sent } = makeServer(core);
+    await server.handleMessage(INIT);
+    void server.handleMessage({
+      kind: "request",
+      id: "run-1",
+      method: "agent.run",
+      params: {},
+    });
+    void server.handleMessage({
+      kind: "request",
+      id: "run-2",
+      method: "agent.run",
+      params: {},
+    });
+    await settle();
+    await server.handleMessage({
+      kind: "request",
+      id: "cancel-2",
+      method: "cancel",
+      params: { runId: "run-2" },
+    });
+    releaseFirst?.();
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    expect(started).toEqual(["run-1"]);
+    expect(sent).toContainEqual({
+      kind: "response",
+      id: "run-2",
+      ok: false,
+      error: { message: "The run was cancelled.", cancelled: true },
+    });
+  });
+
   test("cancel for an unknown run still answers {} and emits nothing else", async () => {
     const { server, sent } = makeServer();
     await server.handleMessage(INIT);

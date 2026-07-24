@@ -1,5 +1,5 @@
 import { Menu } from "@base-ui/react/menu";
-import type { ApprovalMode } from "@nexus/protocol";
+import type { ApprovalMode, Session } from "@nexus/protocol";
 import { m } from "motion/react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { ModelSelection } from "../hooks/useModelSelection";
 import { basename } from "../lib/format";
 import { BranchMenu } from "./BranchMenu";
+import { CompactButton } from "./ContextMeter";
 import {
   CheckIcon,
   ChevronUpIcon,
@@ -24,6 +25,30 @@ import { ModelEffortMenu } from "./ModelEffortMenu";
 
 /// Longest @-mention suggestion list shown at once.
 const MAX_MENTION_SUGGESTIONS = 8;
+const MAX_DROPPED_TEXT_BYTES = 64 * 1024;
+const TEXT_FILE_EXTENSIONS = new Set([
+  "txt",
+  "log",
+  "md",
+  "json",
+  "yaml",
+  "yml",
+  "xml",
+  "csv",
+  "ts",
+  "tsx",
+  "js",
+  "jsx",
+  "py",
+  "rs",
+  "go",
+  "java",
+  "kt",
+  "swift",
+  "sh",
+  "toml",
+  "ini",
+]);
 
 /// Detects an in-progress @-mention immediately before the caret: an `@` at the
 /// start or after whitespace, followed by non-space, non-`@` query characters.
@@ -99,6 +124,9 @@ export function Composer({
   onAttachmentsChange,
   files,
   onEnsureFiles,
+  session,
+  onCompact,
+  compacting,
 }: {
   prompt: string;
   onPromptChange: (value: string) => void;
@@ -124,6 +152,11 @@ export function Composer({
   files: string[];
   /// Lazily populate `files` when the mention menu first opens.
   onEnsureFiles: () => void;
+  /// The session this composer drives, for the compact button's token count.
+  session: Session;
+  /// Compact the conversation now (also reachable by typing `/compact`).
+  onCompact: () => void;
+  compacting: boolean;
 }) {
   const hasProviders = models.providers.length > 0;
   const canSend =
@@ -132,6 +165,15 @@ export function Composer({
     !running;
   const activeMode =
     MODES.find((mode) => mode.value === approvalMode) ?? MODES[0];
+  const draftTokens = Math.ceil(prompt.length / 4);
+  const context = session.context;
+  const projectedContext = context
+    ? context.usedTokens + draftTokens
+    : undefined;
+  const contextPercent =
+    context && projectedContext
+      ? Math.round((projectedContext / context.contextTokens) * 100)
+      : undefined;
 
   // @-mention autocomplete: the active query (or null) plus the highlighted
   // suggestion. Detection runs on every change against the caret position.
@@ -176,6 +218,20 @@ export function Composer({
 
   function removeAttachment(path: string) {
     onAttachmentsChange(attachments.filter((item) => item !== path));
+  }
+
+  async function ingestDroppedText(files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    const extension = file.name.split(".").at(-1)?.toLowerCase() ?? "";
+    if (!file.type.startsWith("text/") && !TEXT_FILE_EXTENSIONS.has(extension))
+      return;
+    const text = await file.text();
+    const limited = text.slice(0, MAX_DROPPED_TEXT_BYTES);
+    const suffix =
+      text.length > limited.length ? "\n[Attachment truncated]" : "";
+    const block = `Context from dropped file ${file.name}:\n\n\`\`\`\n${limited}${suffix}\n\`\`\``;
+    onPromptChange(prompt ? `${prompt}\n\n${block}` : block);
   }
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
@@ -360,6 +416,11 @@ export function Composer({
                 )
               }
               onBlur={() => setMention(null)}
+              onDrop={(event) => {
+                event.preventDefault();
+                void ingestDroppedText(event.dataTransfer.files);
+              }}
+              onDragOver={(event) => event.preventDefault()}
               onKeyDown={onKeyDown}
               disabled={!hasProviders || running}
               rows={2}
@@ -372,10 +433,32 @@ export function Composer({
             />
 
             <div className="flex items-center justify-between px-2.5 pb-2.5 pt-0.5">
-              <ModelEffortMenu
-                selection={models}
-                onOpenSettings={onOpenSettings}
-              />
+              <div className="flex min-w-0 items-center gap-1">
+                {contextPercent !== undefined ? (
+                  <span
+                    title="Estimated context after sending this draft"
+                    className={`font-mono text-[10px] tabular-nums ${
+                      contextPercent >= 90
+                        ? "text-destructive"
+                        : contextPercent >= 70
+                          ? "text-warning"
+                          : "text-faint"
+                    }`}
+                  >
+                    ~{contextPercent}%
+                  </span>
+                ) : null}
+                <ModelEffortMenu
+                  selection={models}
+                  onOpenSettings={onOpenSettings}
+                />
+                <CompactButton
+                  session={session}
+                  onCompact={onCompact}
+                  compacting={compacting}
+                  disabled={running}
+                />
+              </div>
 
               {running ? (
                 <m.button

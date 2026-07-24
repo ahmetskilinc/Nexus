@@ -1,5 +1,5 @@
 import type { AppState, Session } from "@nexus/protocol";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AgentRunApi } from "../hooks/useAgentRun";
 import {
   type ModelCatalog,
@@ -36,6 +36,10 @@ export function ChatPane({
   topClearRight,
   files,
   onEnsureFiles,
+  attachmentPath,
+  onAttachmentConsumed,
+  draftContext,
+  onDraftContextConsumed,
 }: {
   state: AppState;
   apply: (op: AppOp) => void;
@@ -53,6 +57,12 @@ export function ChatPane({
   /// Workspace file index for @-mention autocomplete, with a lazy loader.
   files: string[];
   onEnsureFiles: () => void;
+  /// A file selected from a contextual UI surface (preview/search) to attach.
+  attachmentPath?: string;
+  onAttachmentConsumed: () => void;
+  /// Explicit context copied from a preview/search surface into the draft.
+  draftContext?: string;
+  onDraftContextConsumed: () => void;
   /// Whether this pane holds the focused (current) session.
   focused: boolean;
   /// Split only: pointer-down anywhere in the pane moves focus here.
@@ -76,7 +86,37 @@ export function ChatPane({
   // hides the branch switcher rather than showing another repo's branches.
   const sameWorkspace = session.workspacePath === state.workspacePath;
 
+  useEffect(() => {
+    if (!attachmentPath) return;
+    setAttachments((current) =>
+      current.includes(attachmentPath) ? current : [...current, attachmentPath],
+    );
+    onAttachmentConsumed();
+  }, [attachmentPath, onAttachmentConsumed]);
+
+  useEffect(() => {
+    if (!draftContext) return;
+    setPrompt((current) =>
+      current ? `${current}\n\n${draftContext}` : draftContext,
+    );
+    onDraftContextConsumed();
+  }, [draftContext, onDraftContextConsumed]);
+
+  const compacting = agent.isCompacting(session.id);
+
+  function compact() {
+    agent.compact(session.id);
+  }
+
   function send() {
+    // The only slash command: `/compact` folds the older turns into a summary
+    // instead of starting a run. Matched exactly so a message that merely
+    // mentions it still reaches the agent.
+    if (prompt.trim() === "/compact") {
+      setPrompt("");
+      compact();
+      return;
+    }
     if (agent.send(session.id, prompt, attachments)) {
       setPrompt("");
       setAttachments([]);
@@ -112,6 +152,9 @@ export function ChatPane({
         onClose={onClose}
         padLeft={topPadLeft}
         clearRight={topClearRight}
+        onCompact={compact}
+        compacting={compacting}
+        running={running}
       />
       <div className="relative flex min-h-0 flex-1 flex-col">
         {session.recovery?.status === "interrupted" ? (
@@ -168,6 +211,9 @@ export function ChatPane({
           onAttachmentsChange={setAttachments}
           files={files}
           onEnsureFiles={onEnsureFiles}
+          session={session}
+          onCompact={compact}
+          compacting={compacting}
         />
       </div>
     </div>

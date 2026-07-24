@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import * as path from "node:path";
 import { createInterface } from "node:readline";
 import {
   asArray,
@@ -44,6 +45,11 @@ export class McpClient {
   private constructor(config: McpServerConfig, timeoutMs: number) {
     this.name = config.name;
     this.timeoutMs = timeoutMs;
+    if (!isSafeCommand(config.command)) {
+      throw new ToolError(
+        "MCP server command must be an executable name or absolute path.",
+      );
+    }
     this.child = spawn(config.command, config.args ?? [], {
       env: { ...process.env, ...config.env },
       stdio: ["pipe", "pipe", "ignore"],
@@ -65,8 +71,9 @@ export class McpClient {
     config: McpServerConfig,
     timeoutMs = DEFAULT_TIMEOUT_MS,
   ): Promise<{ client: McpClient; tools: DiscoveredTool[] }> {
-    const client = new McpClient(config, timeoutMs);
+    let client: McpClient | undefined;
     try {
+      client = new McpClient(config, timeoutMs);
       await client.awaitSpawn(config.command);
       await client.request("initialize", {
         protocolVersion: PROTOCOL_VERSION,
@@ -77,7 +84,7 @@ export class McpClient {
       const listed = await client.request("tools/list", {});
       return { client, tools: discoveredTools(listed) };
     } catch (error) {
-      client.dispose();
+      client?.dispose();
       throw error;
     }
   }
@@ -175,6 +182,18 @@ export class McpClient {
     }
     this.pending.clear();
   }
+}
+
+/// Rejects shell snippets and relative paths. `spawn` never invokes a shell,
+/// but this validation makes the persisted configuration's executable boundary
+/// explicit and prevents a misleading command string from being accepted.
+export function isSafeCommand(command: string): boolean {
+  const trimmed = command.trim();
+  if (!trimmed || /[\r\n\0]/.test(trimmed)) return false;
+  if (path.isAbsolute(trimmed)) return true;
+  return (
+    !trimmed.includes("/") && !trimmed.includes("\\") && !/\s/.test(trimmed)
+  );
 }
 
 function discoveredTools(listed: unknown): DiscoveredTool[] {

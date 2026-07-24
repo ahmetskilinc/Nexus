@@ -228,6 +228,49 @@ export function useWorkspaceFiles(
     }
   }
 
+  async function revertCommit(revision: string): Promise<boolean> {
+    try {
+      await window.nexus.revertCommit(revision);
+      await Promise.all([refreshChanges(), refreshSync()]);
+      return true;
+    } catch (reason) {
+      reportError(
+        reason instanceof Error
+          ? reason.message
+          : "Could not revert the commit.",
+      );
+      return false;
+    }
+  }
+
+  async function stashChanges(): Promise<boolean> {
+    try {
+      await window.nexus.stashChanges();
+      await Promise.all([refreshChanges(), refreshSync()]);
+      return true;
+    } catch (reason) {
+      reportError(
+        reason instanceof Error ? reason.message : "Could not stash changes.",
+      );
+      return false;
+    }
+  }
+
+  async function applyLatestStash(): Promise<boolean> {
+    try {
+      await window.nexus.applyLatestStash();
+      await Promise.all([refreshChanges(), refreshSync()]);
+      return true;
+    } catch (reason) {
+      reportError(
+        reason instanceof Error
+          ? reason.message
+          : "Could not apply the latest stash.",
+      );
+      return false;
+    }
+  }
+
   async function discardFile(path: string) {
     try {
       await window.nexus.discardFile(path);
@@ -313,6 +356,9 @@ export function useWorkspaceFiles(
     fetchRemotes,
     pullCommits,
     pushCommits,
+    revertCommit,
+    stashChanges,
+    applyLatestStash,
     refreshSync,
     stageFiles,
     unstageFiles,

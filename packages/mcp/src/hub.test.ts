@@ -1,6 +1,7 @@
 import { afterAll, afterEach, describe, expect, spyOn, test } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { type McpServerConfig, ToolError } from "@nexus/protocol";
+import { isSafeCommand } from "./client";
 import { McpHub } from "./hub";
 
 const FIXTURE = fileURLToPath(
@@ -36,6 +37,16 @@ afterEach(() => {
 });
 afterAll(() => {
   errorSpy.mockRestore();
+});
+
+describe("MCP command validation", () => {
+  test("accepts executable names and absolute paths, but not shell snippets", () => {
+    expect(isSafeCommand("npx")).toBe(true);
+    expect(isSafeCommand("/usr/local/bin/mcp-server")).toBe(true);
+    expect(isSafeCommand("npx -y server")).toBe(false);
+    expect(isSafeCommand("./server")).toBe(false);
+    expect(isSafeCommand("node\nrm -rf /")).toBe(false);
+  });
 });
 
 describe("McpHub", () => {

@@ -50,7 +50,13 @@ import {
 } from "./Icons";
 import { SidebarNavRow } from "./sidebar";
 
-type Category = "general" | "appearance" | "models" | "tools" | "about";
+type Category =
+  | "general"
+  | "appearance"
+  | "models"
+  | "tools"
+  | "accessibility"
+  | "about";
 
 const CATEGORIES: {
   id: Category;
@@ -90,6 +96,12 @@ const CATEGORIES: {
     label: "Tools",
     Icon: WrenchIcon,
     keywords: ["web", "search", "fetch", "mcp", "network", "extensions"],
+  },
+  {
+    id: "accessibility",
+    label: "Accessibility",
+    Icon: MonitorIcon,
+    keywords: ["keyboard", "shortcut", "focus", "screen reader", "contrast"],
   },
   {
     id: "about",
@@ -233,6 +245,7 @@ export function SettingsScreen({
             {active === "tools" ? (
               <ToolsPanel state={state} apply={apply} />
             ) : null}
+            {active === "accessibility" ? <AccessibilityPanel /> : null}
             {active === "about" ? <AboutPanel /> : null}
           </div>
         </div>
@@ -442,6 +455,7 @@ function GeneralPanel({
           </span>
         </Row>
       </Section>
+      <RunJournalSection state={state} />
       <Section title="Archived sessions">
         {state.sessions.filter((session) => session.archivedAt).length === 0 ? (
           <Row
@@ -471,6 +485,47 @@ function GeneralPanel({
         )}
       </Section>
     </>
+  );
+}
+
+function RunJournalSection({ state }: { state: AppState }) {
+  const current = state.sessions.find(
+    (session) => session.id === state.currentSessionId,
+  );
+  const entries = current?.runJournal ?? [];
+  const label: Record<NonNullable<typeof entries>[number]["status"], string> = {
+    queued: "Queued",
+    running: "Running",
+    completed: "Completed",
+    failed: "Failed",
+    cancelled: "Cancelled",
+    interrupted: "Interrupted",
+  };
+  return (
+    <Section title="Recent run activity">
+      {entries.length === 0 ? (
+        <Row
+          title="No runs recorded"
+          description="Recent agent lifecycle activity appears here for the focused session."
+          last
+        />
+      ) : (
+        [...entries]
+          .reverse()
+          .map((entry, index) => (
+            <Row
+              key={`${entry.id}-${entry.startedAt}`}
+              title={label[entry.status]}
+              description={`${new Date(entry.startedAt).toLocaleString()}${
+                entry.endedAt
+                  ? ` · ended ${new Date(entry.endedAt).toLocaleTimeString()}`
+                  : ""
+              }`}
+              last={index === entries.length - 1}
+            />
+          ))
+      )}
+    </Section>
   );
 }
 
@@ -592,7 +647,7 @@ function ModelsPanel({
             <Row
               key={provider.id}
               title={provider.name}
-              description={`${provider.kind} · ${provider.authentication}`}
+              description={`${provider.kind} · ${provider.authentication} · credentials stored in native secure storage`}
               last={index === state.providers.length - 1}
             >
               <button
@@ -605,6 +660,14 @@ function ModelsPanel({
             </Row>
           ))
         )}
+      </Section>
+
+      <Section title="Connection policy">
+        <Row
+          title="Direct provider connections"
+          description="Nexus sends requests directly to the selected provider. Custom, proxy, Azure-style, and local OpenAI-compatible endpoints are intentionally deferred until their endpoint, authentication, and data-policy contracts are implemented."
+          last
+        />
       </Section>
 
       <Section title="Add a provider">
@@ -696,11 +759,15 @@ function ToolsPanel({
   const [command, setCommand] = useState("");
   const [argsText, setArgsText] = useState("");
   const [message, setMessage] = useState<string>();
+  const [inspecting, setInspecting] = useState<string>();
+  const [toolsByServer, setToolsByServer] = useState<
+    Record<string, Array<{ name: string; description: string }>>
+  >({});
 
   const field =
     "rounded-lg border border-border-soft bg-panel px-3 py-2 text-[13px] text-foreground outline-none transition focus:border-primary-dim";
 
-  function addServer(event: FormEvent) {
+  async function addServer(event: FormEvent) {
     event.preventDefault();
     const trimmedName = name.trim();
     const trimmedCommand = command.trim();
@@ -718,15 +785,50 @@ function ToolsPanel({
       args: argsText.trim() ? argsText.trim().split(/\s+/) : [],
       enabled: true,
     };
-    apply(addMcpServer(server));
-    setName("");
-    setCommand("");
-    setArgsText("");
-    setMessage(`${server.name} added. It connects on your next message.`);
+    setInspecting(server.name);
+    setMessage(undefined);
+    try {
+      // Do not persist a server command until it has completed a real MCP
+      // handshake and disclosed its tool surface to the user.
+      const tools = await window.nexus.inspectMcpServer(server);
+      setToolsByServer((current) => ({ ...current, [server.name]: tools }));
+      apply(addMcpServer(server));
+      setName("");
+      setCommand("");
+      setArgsText("");
+      setMessage(
+        `${server.name} added with ${tools.length} discovered tool${tools.length === 1 ? "" : "s"}. Calls still require approval outside Auto mode.`,
+      );
+    } catch (reason) {
+      setMessage(
+        reason instanceof Error
+          ? reason.message
+          : "Could not connect to this MCP server.",
+      );
+    } finally {
+      setInspecting(undefined);
+    }
   }
 
   function removeServer(target: McpServerConfig) {
     apply(removeMcpServer(target.name));
+  }
+
+  async function inspectServer(server: McpServerConfig) {
+    setInspecting(server.name);
+    setMessage(undefined);
+    try {
+      const tools = await window.nexus.inspectMcpServer(server);
+      setToolsByServer((current) => ({ ...current, [server.name]: tools }));
+    } catch (reason) {
+      setMessage(
+        reason instanceof Error
+          ? reason.message
+          : "Could not inspect MCP server.",
+      );
+    } finally {
+      setInspecting(undefined);
+    }
   }
 
   return (
@@ -793,27 +895,65 @@ function ToolsPanel({
           />
         ) : (
           servers.map((server, index) => (
-            <Row
-              key={server.name}
-              title={server.name}
-              description={`${server.command} ${(server.args ?? []).join(" ")}`.trim()}
-              last={index === servers.length - 1}
-            >
-              <div className="flex items-center gap-2">
-                <Toggle
-                  label={`Enable ${server.name}`}
-                  checked={server.enabled !== false}
-                  onChange={() => apply(toggleMcpServer(server.name))}
-                />
-                <button
-                  type="button"
-                  onClick={() => removeServer(server)}
-                  className="rounded-lg px-2 py-1 text-[12px] font-medium text-muted-foreground transition hover:bg-accent hover:text-destructive"
-                >
-                  Remove
-                </button>
-              </div>
-            </Row>
+            <div key={server.name}>
+              <Row
+                title={server.name}
+                description={`${server.command} ${(server.args ?? []).join(" ")}`.trim()}
+                last={
+                  index === servers.length - 1 && !toolsByServer[server.name]
+                }
+              >
+                <div className="flex items-center gap-2">
+                  <Toggle
+                    label={`Enable ${server.name}`}
+                    checked={server.enabled !== false}
+                    onChange={() => apply(toggleMcpServer(server.name))}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void inspectServer(server)}
+                    disabled={inspecting === server.name}
+                    className="rounded-lg px-2 py-1 text-[12px] font-medium text-primary-soft transition hover:bg-accent disabled:opacity-50"
+                  >
+                    {inspecting === server.name ? "Testing…" : "Inspect"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeServer(server)}
+                    className="rounded-lg px-2 py-1 text-[12px] font-medium text-muted-foreground transition hover:bg-accent hover:text-destructive"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </Row>
+              {toolsByServer[server.name] ? (
+                <div className="border-b border-border-soft px-4 py-3">
+                  <p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                    Discovered tools
+                  </p>
+                  {toolsByServer[server.name]?.length ? (
+                    <ul className="mt-2 space-y-1.5">
+                      {toolsByServer[server.name]?.map((tool) => (
+                        <li key={tool.name} className="text-[12px]">
+                          <span className="font-mono text-foreground">
+                            {tool.name}
+                          </span>
+                          {tool.description ? (
+                            <span className="ml-2 text-muted-foreground">
+                              {tool.description}
+                            </span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-[12px] text-faint">
+                      No tools exposed by this server.
+                    </p>
+                  )}
+                </div>
+              ) : null}
+            </div>
           ))
         )}
       </Section>
@@ -852,9 +992,10 @@ function ToolsPanel({
           ) : null}
           <button
             type="submit"
-            className="mt-1 justify-self-start rounded-lg bg-primary px-3.5 py-2 text-[12px] font-semibold text-primary-foreground transition hover:bg-primary-soft"
+            disabled={Boolean(inspecting)}
+            className="mt-1 justify-self-start rounded-lg bg-primary px-3.5 py-2 text-[12px] font-semibold text-primary-foreground transition hover:bg-primary-soft disabled:opacity-50"
           >
-            Add server
+            {inspecting ? "Testing server…" : "Test and add server"}
           </button>
         </form>
       </Section>
@@ -1066,6 +1207,58 @@ function ContextBadge({ children }: { children: ReactNode }) {
     <span className="rounded-full border border-border-soft bg-panel px-2 py-1 text-[10px] font-medium text-muted-foreground">
       {children}
     </span>
+  );
+}
+
+function AccessibilityPanel() {
+  return (
+    <>
+      <Section title="Keyboard navigation">
+        <Row
+          title="New task"
+          description="Create a task in the active workspace."
+        >
+          <Shortcut>⌘/Ctrl N</Shortcut>
+        </Row>
+        <Row
+          title="Quick Open"
+          description="Find a workspace file by name or path."
+        >
+          <Shortcut>⌘/Ctrl P</Shortcut>
+        </Row>
+        <Row
+          title="Search workspace"
+          description="Search literal text across safe indexed files."
+        >
+          <Shortcut>⌘/Ctrl F</Shortcut>
+        </Row>
+        <Row title="Settings" description="Open application settings.">
+          <Shortcut>⌘/Ctrl ,</Shortcut>
+        </Row>
+        <Row
+          title="Toggle sidebars"
+          description="Show or hide the workspace and file panels."
+          last
+        >
+          <Shortcut>⌘/Ctrl B · ⌘/Ctrl \\</Shortcut>
+        </Row>
+      </Section>
+      <Section title="Motion and focus">
+        <Row
+          title="Reduce motion"
+          description="Use the Appearance and General settings to reduce animations. All primary workspace actions are keyboard reachable and dialogs close with Escape."
+          last
+        />
+      </Section>
+    </>
+  );
+}
+
+function Shortcut({ children }: { children: ReactNode }) {
+  return (
+    <kbd className="rounded border border-border-soft bg-panel px-1.5 py-1 font-mono text-[11px] text-muted-foreground">
+      {children}
+    </kbd>
   );
 }
 

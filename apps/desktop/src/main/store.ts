@@ -34,6 +34,17 @@ const ALLOWED_KEYS = new Set<keyof AppState>([
 ]);
 
 const PROVIDER_KINDS = new Set<ProviderKind>(["OpenAI", "Anthropic", "Kimi"]);
+const MAX_RUN_JOURNAL = 20;
+
+function appendRunJournal(
+  journal: AppState["sessions"][number]["runJournal"],
+  entry: NonNullable<AppState["sessions"][number]["runJournal"]>[number],
+) {
+  return [
+    ...(journal ?? []).filter((item) => item.id !== entry.id),
+    entry,
+  ].slice(-MAX_RUN_JOURNAL);
+}
 
 /// Reshapes provider profiles to exactly their known fields. Provider secrets
 /// live only in the OS keychain (via the runtime credential store), never here;
@@ -94,6 +105,12 @@ export class Store {
         ? {
             ...session,
             recovery: { ...session.recovery, status: "interrupted" as const },
+            runJournal: appendRunJournal(session.runJournal, {
+              id: session.recovery.runId ?? "interrupted",
+              startedAt: session.recovery.startedAt,
+              endedAt: recoveredAt,
+              status: "interrupted",
+            }),
             updatedAt: recoveredAt,
           }
         : session,

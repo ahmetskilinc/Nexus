@@ -42,17 +42,18 @@ export function QuickOpen({
   }
 
   return (
-    <div
-      role="presentation"
-      onMouseDown={onClose}
-      className="fixed inset-0 z-50 grid place-items-start bg-black/25 pt-[18vh] backdrop-blur-[1px]"
-    >
+    <div className="fixed inset-0 z-50 grid place-items-start pt-[18vh]">
+      <button
+        type="button"
+        aria-label="Close quick open"
+        onMouseDown={onClose}
+        className="absolute inset-0 border-0 bg-black/25 backdrop-blur-[1px]"
+      />
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Quick open file"
-        onMouseDown={(event) => event.stopPropagation()}
-        className="w-full max-w-xl overflow-hidden rounded-xl border border-border bg-popover shadow-[var(--shadow-pop)]"
+        className="relative z-10 w-full max-w-xl overflow-hidden rounded-xl border border-border bg-popover shadow-[var(--shadow-pop)]"
       >
         <div className="flex items-center gap-2 border-b border-border-soft px-3 py-2.5">
           <SearchIcon size={16} className="text-faint" />

@@ -15,10 +15,10 @@ const CHARS_PER_TOKEN = 4;
 
 /// Fraction of the context window at which compaction kicks in. Below the
 /// window so the summary turn plus the model's own reply still fit.
-const TRIGGER_FRACTION = 0.7;
+export const TRIGGER_FRACTION = 0.7;
 
 /// Default assumed context window when the catalog has no limit for the model.
-const DEFAULT_CONTEXT_TOKENS = 200_000;
+export const DEFAULT_CONTEXT_TOKENS = 200_000;
 
 /// How many recent messages to keep verbatim. Everything older is folded into
 /// the summary. The boundary is nudged so it never splits a tool call from its

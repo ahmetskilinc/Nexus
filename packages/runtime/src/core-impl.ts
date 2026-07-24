@@ -15,7 +15,11 @@ import type {
   RuntimeConfig,
   RuntimeCore,
 } from "./core";
-import { handleAgentRun, handleOauthSignin } from "./handlers/agent";
+import {
+  handleAgentCompact,
+  handleAgentRun,
+  handleOauthSignin,
+} from "./handlers/agent";
 import {
   handleCredentialsDelete,
   handleCredentialsSet,
@@ -34,20 +38,26 @@ import {
   handleCheckpointRestore,
   handleCheckpointRestoreLatestMutation,
   handleContextPreview,
+  handleWorkspaceApplyStash,
   handleWorkspaceChanges,
   handleWorkspaceCommit,
   handleWorkspaceCreateBranch,
+  handleWorkspaceCreateTag,
   handleWorkspaceDiff,
   handleWorkspaceDiscard,
   handleWorkspaceDeleteBranch,
   handleWorkspaceFetch,
   handleWorkspaceIndex,
   handleWorkspaceInspect,
+  handleWorkspaceProjectMap,
   handleWorkspaceSearch,
   handleWorkspacePull,
   handleWorkspacePush,
   handleWorkspaceRenameBranch,
+  handleWorkspaceRevertCommit,
   handleWorkspaceStage,
+  handleWorkspaceStash,
+  handleWorkspaceTags,
   handleWorkspaceSwitchBranch,
   handleWorkspaceSync,
   handleWorkspaceUnstage,
@@ -113,6 +123,8 @@ export class NexusCore implements RuntimeCore {
         return handleWorkspaceIndex(params);
       case "workspace.inspect":
         return handleWorkspaceInspect(params);
+      case "workspace.projectMap":
+        return handleWorkspaceProjectMap(params);
       case "workspace.search":
         return handleWorkspaceSearch(params);
       case "workspace.changes":
@@ -133,6 +145,16 @@ export class NexusCore implements RuntimeCore {
         return handleWorkspaceUnstage(params);
       case "workspace.commit":
         return handleWorkspaceCommit(params);
+      case "workspace.tags":
+        return handleWorkspaceTags(params);
+      case "workspace.createTag":
+        return handleWorkspaceCreateTag(params);
+      case "workspace.revertCommit":
+        return handleWorkspaceRevertCommit(params);
+      case "workspace.stash":
+        return handleWorkspaceStash(params);
+      case "workspace.applyStash":
+        return handleWorkspaceApplyStash(params);
       case "workspace.discard":
         return handleWorkspaceDiscard(params);
       case "workspace.sync":
@@ -172,6 +194,13 @@ export class NexusCore implements RuntimeCore {
         return handleMcpInspect(params);
       case "agent.run":
         return handleAgentRun(params, context, this.fetchFn, this.credentials);
+      case "agent.compact":
+        return handleAgentCompact(
+          params,
+          context,
+          this.fetchFn,
+          this.credentials,
+        );
       case "oauth.signin":
         return handleOauthSignin(params, context, this.fetchFn, this.store);
       default:

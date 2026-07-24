@@ -2,7 +2,12 @@ import { execFile } from "node:child_process";
 import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { AppState, ModelInfo, StartAgentParams } from "@nexus/protocol";
+import type {
+  AppState,
+  CompactAgentParams,
+  ModelInfo,
+  StartAgentParams,
+} from "@nexus/protocol";
 import {
   app,
   BrowserWindow,
@@ -321,6 +326,14 @@ function registerIpc() {
       truncated,
     };
   });
+  ipcMain.handle("workspace:project-map", async () => {
+    const state = store.snapshot();
+    const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
+    const { response } = runtime.request("workspace.projectMap", {
+      path: workspacePath,
+    });
+    return (await response).map;
+  });
   ipcMain.handle("workspace:search", async (_event, query: string) => {
     const state = store.snapshot();
     const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
@@ -470,6 +483,44 @@ function registerIpc() {
     });
     return (await response).sync;
   });
+  ipcMain.handle("workspace:tags", async () => {
+    const state = store.snapshot();
+    const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
+    const { response } = runtime.request("workspace.tags", {
+      path: workspacePath,
+    });
+    const result = await response;
+    return Array.isArray(result.tags) ? result.tags : [];
+  });
+  ipcMain.handle("workspace:create-tag", async (_event, name: string) => {
+    const state = store.snapshot();
+    const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
+    await runtime.request("workspace.createTag", { path: workspacePath, name })
+      .response;
+  });
+  ipcMain.handle(
+    "workspace:revert-commit",
+    async (_event, revision: string) => {
+      const state = store.snapshot();
+      const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
+      await runtime.request("workspace.revertCommit", {
+        path: workspacePath,
+        revision,
+      }).response;
+    },
+  );
+  ipcMain.handle("workspace:stash", async (_event, message?: string) => {
+    const state = store.snapshot();
+    const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
+    await runtime.request("workspace.stash", { path: workspacePath, message })
+      .response;
+  });
+  ipcMain.handle("workspace:apply-stash", async () => {
+    const state = store.snapshot();
+    const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
+    await runtime.request("workspace.applyStash", { path: workspacePath })
+      .response;
+  });
   ipcMain.handle("workspace:discard", async (_event, relativePath: string) => {
     const state = store.snapshot();
     const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
@@ -596,6 +647,24 @@ function registerIpc() {
     const result = await runtime.request("mcp.inspect", { server }).response;
     return Array.isArray(result.tools) ? result.tools : [];
   });
+  // Compaction is a single summarizer round-trip, not a run: it streams no
+  // events and resolves with the folded history, so it is awaited here rather
+  // than tracked in the renderer's active-run registry.
+  ipcMain.handle(
+    "runtime:compact",
+    async (_event, params: CompactAgentParams) => {
+      const state = store.snapshot();
+      const workspacePath = requireWorkspace(params.workspacePath, state);
+      const provider = profileById(state, params.providerId);
+      if (!params.model) throw new Error("No model selected.");
+      return runtime.request("agent.compact", {
+        ...params,
+        workspacePath,
+        providerKind: provider.kind,
+        auth: provider.authentication,
+      }).response;
+    },
+  );
   ipcMain.handle(
     "runtime:agent",
     (_event, params: StartAgentParams): string => {

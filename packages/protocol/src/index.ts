@@ -32,7 +32,7 @@ export type {
   ProviderKind,
   ProviderProfile,
 } from "./providers";
-export type { StartAgentParams } from "./requests";
+export type { CompactAgentParams, StartAgentParams } from "./requests";
 export { ToolError } from "./tool-error";
 export type {
   HostMessage,

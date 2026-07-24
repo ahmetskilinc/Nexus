@@ -1,6 +1,9 @@
 import {
   ApprovalMailbox,
+  compact,
   type CredentialResolver,
+  DEFAULT_CONTEXT_TOKENS,
+  estimateTokens,
   parseApprovalMode,
   type RunParams,
   run,
@@ -176,6 +179,43 @@ export async function handleAgentRun(
     },
     costUsd,
     checkpoint: result.checkpoint,
+  };
+}
+
+/// Compacts a session's history on demand. Returns `messages: null` when
+/// there was nothing worth compacting, so the caller can say so rather than
+/// showing a marker for a no-op.
+export async function handleAgentCompact(
+  params: unknown,
+  context: CoreContext,
+  fetchFn: typeof fetch,
+  credentials: CredentialResolver,
+) {
+  const record = asRecord(params) ?? {};
+  const kind = parseProviderKind(stringParam(params, "providerKind"));
+  const model = stringParam(params, "model");
+  const compaction = await compact(
+    { fetchFn, credentials, signal: context.signal },
+    {
+      providerId: stringParam(params, "providerId"),
+      kind,
+      model,
+      auth: parseAuthMethod(stringParam(params, "auth")),
+      history: parseHistory(record.history),
+    },
+  );
+  if (!compaction) return { messages: null };
+  return {
+    messages: compaction.messages,
+    summary: compaction.summary,
+    removedMessages: compaction.removedMessages,
+    keptMessages: compaction.keptMessages,
+    // A fresh meter reading for the folded history. This is the char-based
+    // estimate, not a provider count — the next real turn overwrites it with
+    // the exact number — but it lets the meter drop the moment we return.
+    usedTokens: estimateTokens(compaction.messages),
+    contextTokens:
+      modelsDevLookup(kind, model)?.context ?? DEFAULT_CONTEXT_TOKENS,
   };
 }
 

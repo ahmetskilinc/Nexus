@@ -1,9 +1,8 @@
 name: Release
 
-# Every push to main (including PR merges) runs checks. A release is built,
-# signed, notarized, and published only when apps/desktop/package.json holds a
-# version that has no v<version> GitHub release yet — bumping the version is
-# what ships.
+# CI validates pull requests and every main push. This workflow only handles
+# macOS packaging/signing/notarization when the desktop version has no matching
+# GitHub release yet — bumping the version is what ships.
 on:
   push:
     branches: [main]
@@ -32,8 +31,8 @@ jobs:
           HUGEICONS_TOKEN: ${{ secrets.HUGEICONS_TOKEN }}
         run: bun install --frozen-lockfile
 
-      - name: Typecheck and test
-        run: bunx turbo run typecheck test
+      - name: Full quality gate
+        run: bun run check
 
       - name: Decide whether this version needs a release
         id: version

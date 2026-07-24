@@ -70,6 +70,8 @@ export function RightPanel({
   treeVisible,
   treeWidth,
   onOpenFile,
+  onAttachFile,
+  onAttachPreview,
   onNewTab,
   onCloseTab,
   onActivateTab,
@@ -90,6 +92,8 @@ export function RightPanel({
   treeVisible: boolean;
   treeWidth: number;
   onOpenFile: (path: string) => void;
+  onAttachFile: (path: string) => void;
+  onAttachPreview: (path: string, content: string, truncated: boolean) => void;
   onNewTab: () => void;
   onCloseTab: (id: string) => void;
   onActivateTab: (id: string) => void;
@@ -123,10 +127,10 @@ export function RightPanel({
         ? {
             name: activePath,
             contents: content,
-            cacheKey: `${activePath}:${content.length}`,
+            cacheKey: `${activePath}:${activeContent?.revision ?? 0}`,
           }
         : undefined,
-    [activePath, content, loading],
+    [activePath, content, loading, activeContent?.revision],
   );
 
   useEffect(() => {
@@ -245,6 +249,32 @@ export function RightPanel({
             </span>
           ))}
         </div>
+        {activePath ? (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => onAttachFile(activePath)}
+              className="rounded px-2 py-1 text-[10px] font-medium text-primary-soft transition hover:bg-accent"
+            >
+              Attach file
+            </button>
+            {content !== undefined ? (
+              <button
+                type="button"
+                onClick={() =>
+                  onAttachPreview(
+                    activePath,
+                    content,
+                    Boolean(activeContent?.truncated),
+                  )
+                }
+                className="rounded px-2 py-1 text-[10px] font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground"
+              >
+                Attach text
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         {hasPatch ? (
           <ToggleGroup
             value={[view]}

@@ -63,6 +63,23 @@ export type RunRecovery = {
   status: "in_progress" | "interrupted";
 };
 
+/// Bounded, secret-free lifecycle history for agent runs. It records only
+/// operational state—never prompt text, tool arguments/results, source content,
+/// credentials, or provider responses—so the user can understand recoveries
+/// and queueing after a restart.
+export type RunJournalEntry = {
+  id: string;
+  startedAt: string;
+  endedAt?: string;
+  status:
+    | "queued"
+    | "running"
+    | "completed"
+    | "failed"
+    | "cancelled"
+    | "interrupted";
+};
+
 export type Session = {
   id: string;
   title: string;
@@ -75,6 +92,12 @@ export type Session = {
   /// `costUsd` only accumulates runs whose model had catalog pricing.
   usage?: Usage;
   costUsd?: number;
+  /// How full the model's context window currently is. Unlike `usage` (which
+  /// accumulates across runs) this is a point-in-time reading of the live
+  /// conversation, refreshed after every provider turn. `estimated` marks a
+  /// value derived from the char-based estimate rather than the provider's
+  /// own token count.
+  context?: { usedTokens: number; contextTokens: number; estimated?: boolean };
   openAIResponseId?: string;
   providerId?: string;
   model?: string;
@@ -99,4 +122,6 @@ export type Session = {
   /// Active work marker, converted to `interrupted` on the next app launch.
   /// This contains no tool arguments, output, credentials, or source content.
   recovery?: RunRecovery;
+  /// Most recent run lifecycle records, retained locally and capped by the UI.
+  runJournal?: RunJournalEntry[];
 };

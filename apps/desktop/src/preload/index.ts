@@ -1,6 +1,8 @@
 import type {
+  AgentMessage,
   AppState,
   BranchSync,
+  CompactAgentParams,
   Memory,
   ModelInfo,
   RuntimeEvent,
@@ -26,6 +28,12 @@ const api = {
       path: string;
       content: string;
       truncated: boolean;
+    }>,
+  workspaceProjectMap: () =>
+    ipcRenderer.invoke("workspace:project-map") as Promise<{
+      files: number;
+      languages: Array<{ language: string; files: number }>;
+      topLevel: string[];
     }>,
   searchWorkspace: (query: string) =>
     ipcRenderer.invoke("workspace:search", query) as Promise<
@@ -59,6 +67,15 @@ const api = {
     ipcRenderer.invoke("workspace:unstage", paths) as Promise<void>,
   commitChanges: (message: string) =>
     ipcRenderer.invoke("workspace:commit", message) as Promise<void>,
+  listTags: () => ipcRenderer.invoke("workspace:tags") as Promise<string[]>,
+  createTag: (name: string) =>
+    ipcRenderer.invoke("workspace:create-tag", name) as Promise<void>,
+  revertCommit: (revision: string) =>
+    ipcRenderer.invoke("workspace:revert-commit", revision) as Promise<void>,
+  stashChanges: (message?: string) =>
+    ipcRenderer.invoke("workspace:stash", message) as Promise<void>,
+  applyLatestStash: () =>
+    ipcRenderer.invoke("workspace:apply-stash") as Promise<void>,
   discardFile: (relativePath: string) =>
     ipcRenderer.invoke("workspace:discard", relativePath) as Promise<void>,
   branchSync: () => ipcRenderer.invoke("workspace:sync") as Promise<BranchSync>,
@@ -104,9 +121,22 @@ const api = {
     ipcRenderer.invoke("runtime:credential:set", providerId, value),
   deleteCredential: (providerId: string) =>
     ipcRenderer.invoke("runtime:credential:delete", providerId),
+  inspectMcpServer: (server: unknown) =>
+    ipcRenderer.invoke("runtime:mcp:inspect", server) as Promise<
+      Array<{ name: string; description: string }>
+    >,
   startAgent: (params: StartAgentParams) =>
     ipcRenderer.invoke("runtime:agent", params) as Promise<string>,
   cancelAgent: (runId: string) => ipcRenderer.invoke("runtime:cancel", runId),
+  /// Folds this session's older turns into a summary. `messages: null` means
+  /// there was nothing worth compacting.
+  compactSession: (params: CompactAgentParams) =>
+    ipcRenderer.invoke("runtime:compact", params) as Promise<{
+      messages: AgentMessage[] | null;
+      summary?: string;
+      removedMessages?: number;
+      keptMessages?: number;
+    }>,
   approveEdit: (runId: string, callId: string, approved: boolean) =>
     ipcRenderer.invoke("runtime:approve", runId, callId, approved),
   signIn: (providerId: string, providerKind: string) =>

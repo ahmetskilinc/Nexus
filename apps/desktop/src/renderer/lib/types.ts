@@ -6,6 +6,9 @@ export type SelectedFile = {
   patch: string;
   truncated: boolean;
   loading: boolean;
+  /// Bumps whenever the preview is refreshed so renderers cannot reuse stale
+  /// syntax-highlight caches when content length happens to be unchanged.
+  revision: number;
 };
 
 /// An open editor tab. `path` undefined = an empty "Open file" tab.

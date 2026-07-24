@@ -129,11 +129,15 @@ export function Welcome({
             void clone();
           }}
         >
-          <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground">
+          <label
+            htmlFor="clone-repository-url"
+            className="mb-1.5 block text-[11px] font-medium text-muted-foreground"
+          >
             Clone a repository
           </label>
           <div className="flex gap-2">
             <input
+              id="clone-repository-url"
               value={url}
               onChange={(event) => setUrl(event.target.value)}
               placeholder="https://github.com/org/repo.git"

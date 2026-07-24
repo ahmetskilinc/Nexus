@@ -370,6 +370,91 @@ async function remoteNames(workspace: string): Promise<string[]> {
     .filter(Boolean);
 }
 
+/// Saves the entire working tree (including untracked files) under an optional
+/// local message. Git's own stash stack owns the data; Nexus never copies file
+/// content into app state.
+export async function stashChanges(
+  workspace: string,
+  message?: string,
+): Promise<void> {
+  if (!(await hasWorkingTreeChanges(workspace))) {
+    throw RuntimeError.msg("There are no working-tree changes to stash.");
+  }
+  const args = ["stash", "push", "--include-untracked"];
+  if (message?.trim()) args.push("--message", message.trim());
+  await gitAction(workspace, args, "Git could not stash these changes.");
+}
+
+/// Applies the newest stash without dropping it. Conflicts stay in Git's
+/// working tree for the user to resolve; Nexus never attempts conflict edits.
+export async function applyLatestStash(workspace: string): Promise<void> {
+  await gitAction(
+    workspace,
+    ["stash", "apply", "stash@{0}"],
+    "Git could not apply the latest stash.",
+  );
+}
+
+/// Lists local tags, newest tagged commit first. This is read-only and returns
+/// an empty list outside a Git repository.
+export async function listTags(workspace: string): Promise<string[]> {
+  const output = await runGit(workspace, ["tag", "--sort=-creatordate"], {
+    timeoutMs: 5000,
+  });
+  if (!output.success) return [];
+  return output.stdout
+    .toString("utf8")
+    .split("\n")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+/// Creates an annotated tag at the current HEAD. Tags become a local recovery
+/// marker until the user explicitly pushes them through their Git workflow.
+export async function createTag(
+  workspace: string,
+  name: string,
+  message?: string,
+): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed || trimmed.startsWith("-")) {
+    throw RuntimeError.msg("A valid tag name is required.");
+  }
+  const checked = await runGit(workspace, [
+    "check-ref-format",
+    `refs/tags/${trimmed}`,
+  ]);
+  if (!checked.success) throw RuntimeError.msg("A valid tag name is required.");
+  await gitAction(
+    workspace,
+    ["tag", "--annotate", trimmed, "--message", message?.trim() || trimmed],
+    "Git could not create the tag.",
+  );
+}
+
+/// Reverts a committed change by creating a new inverse commit. The commit hash
+/// is deliberately validated as a hex object id before it becomes a Git argv
+/// token; this is safer than exposing reset, which can discard history.
+export async function revertCommit(
+  workspace: string,
+  revision: string,
+): Promise<void> {
+  const trimmed = revision.trim();
+  if (!/^[0-9a-fA-F]{7,64}$/.test(trimmed)) {
+    throw RuntimeError.msg("Enter a valid commit hash to revert.");
+  }
+  if (await hasWorkingTreeChanges(workspace)) {
+    throw RuntimeError.msg(
+      "Your working tree has changes. Commit, stash, or discard them before reverting a commit.",
+    );
+  }
+  await gitAction(
+    workspace,
+    ["revert", "--no-edit", trimmed],
+    "Git could not revert this commit. Resolve any conflict in your Git tool.",
+  );
+}
+
 export async function discardFile(
   workspace: string,
   relativePath: string,

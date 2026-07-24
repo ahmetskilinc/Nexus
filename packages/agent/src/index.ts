@@ -1,6 +1,8 @@
 export { ApprovalMailbox, type ApprovalReply } from "./approvals";
 export { runCommandTool } from "./command-tool";
+export { type Compaction, compactOnce, type Summarize } from "./compact";
 export {
+  DEFAULT_CONTEXT_TOKENS,
   estimateTokens,
   extractSummary,
   fold,
@@ -9,6 +11,7 @@ export {
   shouldCompact,
   summaryInput,
   threshold,
+  TRIGGER_FRACTION,
 } from "./compaction";
 export {
   augment,
@@ -30,6 +33,8 @@ export {
   SYSTEM_PROMPT,
 } from "./prompts";
 export {
+  compact,
+  type CompactParams,
   type CredentialResolver,
   type RunDeps,
   type RunParams,

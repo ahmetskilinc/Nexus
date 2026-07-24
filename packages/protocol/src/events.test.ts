@@ -19,6 +19,7 @@ describe("parseRuntimeEvent", () => {
       { type: "research", title: "T", markdown: "# t" },
       { type: "todos", todos: [{ content: "a", status: "pending" }] },
       { type: "compacted", removedMessages: 4, keptMessages: 6, summary: "s" },
+      { type: "context", usedTokens: 12_400, contextTokens: 200_000 },
       { type: "subagent_step", callId: "c", tool: "grep", summary: "Grep x" },
       { type: "authorize_url", url: "https://auth.example" },
     ];

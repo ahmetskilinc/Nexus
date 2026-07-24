@@ -10,7 +10,6 @@
 @import "@fontsource/fira-code/400.css";
 @import "@fontsource/fira-code/600.css";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
 
 /* Symbols-only Nerd Font, bundled so shell prompts render their powerline
    separators and devicons regardless of what the user has installed locally —

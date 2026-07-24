@@ -7,11 +7,16 @@ import {
   branchSync,
   commitChanges,
   createBranch,
+  createTag,
   deleteBranch,
   pullFastForward,
   pushCommits,
+  listTags,
   renameBranch,
+  revertCommit,
   stageFiles,
+  stashChanges,
+  applyLatestStash,
   switchBranch,
   unstageFiles,
   validateRelativePath,
@@ -229,6 +234,66 @@ test.skipIf(!gitAvailable)(
     expect(sync.behind).toBe(0);
     expect(fs.readFileSync(path.join(dir, "remote.txt"), "utf8")).toBe(
       "from remote\n",
+    );
+  },
+);
+
+test.skipIf(!gitAvailable)(
+  "createTag validates and lists local tags",
+  async () => {
+    const dir = gitFixture();
+    fs.writeFileSync(path.join(dir, "note.txt"), "one\n");
+    await stageFiles(dir, ["note.txt"]);
+    await commitChanges(dir, "Initial commit");
+    await createTag(dir, "v0.1.0");
+    expect(await listTags(dir)).toEqual(["v0.1.0"]);
+    await expect(createTag(dir, "bad tag")).rejects.toThrow(
+      "A valid tag name is required.",
+    );
+  },
+);
+
+test.skipIf(!gitAvailable)(
+  "revertCommit creates an inverse commit safely",
+  async () => {
+    const dir = gitFixture();
+    fs.writeFileSync(path.join(dir, "note.txt"), "one\n");
+    await stageFiles(dir, ["note.txt"]);
+    await commitChanges(dir, "Initial commit");
+    fs.writeFileSync(path.join(dir, "note.txt"), "two\n");
+    await stageFiles(dir, ["note.txt"]);
+    await commitChanges(dir, "Change note");
+    const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir })
+      .toString("utf8")
+      .trim();
+    await revertCommit(dir, revision);
+    expect(fs.readFileSync(path.join(dir, "note.txt"), "utf8")).toBe("one\n");
+    fs.writeFileSync(path.join(dir, "note.txt"), "dirty\n");
+    await expect(revertCommit(dir, revision)).rejects.toThrow(
+      "working tree has changes",
+    );
+  },
+);
+
+test.skipIf(!gitAvailable)(
+  "stashChanges saves and applyLatestStash restores changes",
+  async () => {
+    const dir = gitFixture();
+    fs.writeFileSync(path.join(dir, "note.txt"), "one\n");
+    await stageFiles(dir, ["note.txt"]);
+    await commitChanges(dir, "Initial commit");
+    fs.writeFileSync(path.join(dir, "note.txt"), "changed\n");
+    fs.writeFileSync(path.join(dir, "untracked.txt"), "new\n");
+
+    await stashChanges(dir, "Nexus test");
+    expect(fs.readFileSync(path.join(dir, "note.txt"), "utf8")).toBe("one\n");
+    expect(fs.existsSync(path.join(dir, "untracked.txt"))).toBe(false);
+    await applyLatestStash(dir);
+    expect(fs.readFileSync(path.join(dir, "note.txt"), "utf8")).toBe(
+      "changed\n",
+    );
+    expect(fs.readFileSync(path.join(dir, "untracked.txt"), "utf8")).toBe(
+      "new\n",
     );
   },
 );

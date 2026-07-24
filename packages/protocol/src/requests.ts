@@ -21,3 +21,14 @@ export type StartAgentParams = {
   /// Per-workspace instruction override for this run's workspace, if any.
   customInstructions?: string;
 };
+
+/// Parameters for compacting a session's history on demand. A summarizer
+/// round-trip needs far less than a run: no tools, no MCP servers, no
+/// approval mode, no budgets. Electron-internal IPC type, augmented with
+/// providerKind/auth by the main process like `StartAgentParams`.
+export type CompactAgentParams = {
+  providerId: string;
+  model: string;
+  workspacePath: string;
+  history: AgentMessage[];
+};

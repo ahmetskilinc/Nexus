@@ -10,16 +10,44 @@
 export type RunHandle = {
   abort: AbortController;
   settled: boolean;
+  agent: boolean;
   deliverApproval?: (callId: string, approved: boolean) => void;
 };
 
 export class RunRegistry {
   private runs = new Map<string, RunHandle>();
 
-  register(id: string): RunHandle {
-    const handle: RunHandle = { abort: new AbortController(), settled: false };
+  register(id: string, agent = false): RunHandle {
+    const handle: RunHandle = {
+      abort: new AbortController(),
+      settled: false,
+      agent,
+    };
     this.runs.set(id, handle);
     return handle;
+  }
+
+  /// Agent runs are intentionally serialized. Model calls, MCP processes, and
+  /// mutation checkpoints are resource-heavy; a second request stays queued in
+  /// the server until no other live `agent.run` handle remains.
+  hasActiveAgentExcept(id: string): boolean {
+    return [...this.runs.entries()].some(
+      ([otherId, handle]) => otherId !== id && handle.agent && !handle.settled,
+    );
+  }
+
+  async waitForAgentSlot(id: string, signal: AbortSignal): Promise<void> {
+    while (this.hasActiveAgentExcept(id)) {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, 50);
+        const abort = () => {
+          clearTimeout(timer);
+          reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+        };
+        if (signal.aborted) abort();
+        else signal.addEventListener("abort", abort, { once: true });
+      });
+    }
   }
 
   /// Marks the request settled; returns false when it already was (i.e. the

@@ -105,8 +105,13 @@ export class RuntimeServer {
       return;
     }
 
-    const handle = this.registry.register(id);
+    const handle = this.registry.register(id, method === "agent.run");
     try {
+      if (method === "agent.run") {
+        if (this.registry.hasActiveAgentExcept(id))
+          this.emitEvent(id, { type: "agent_queued" });
+        await this.registry.waitForAgentSlot(id, handle.abort.signal);
+      }
       const result = await this.core.handle(method, params, {
         requestId: id,
         emitter: { emit: (event: RuntimeEvent) => this.emitEvent(id, event) },

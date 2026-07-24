@@ -1,22 +1,28 @@
 import { loadInstructionFileInfo } from "@nexus/agent";
 import { asRecord, RuntimeError } from "@nexus/protocol";
 import {
+  applyLatestStash,
   branchSync,
   commitChanges,
   createBranch,
+  createTag,
   deleteBranch,
   discardFile,
   fetchRemotes,
   indexWorkspace,
   inspectWorkspace,
   listMemories,
+  listTags,
+  projectMap,
   pullFastForward,
   pushCommits,
   renameBranch,
+  revertCommit,
   restoreCheckpoint,
   restoreLatestMutation,
   searchWorkspaceText,
   stageFiles,
+  stashChanges,
   switchBranch,
   unstageFiles,
   workspaceChanges,
@@ -36,6 +42,11 @@ export async function handleWorkspaceInspect(params: unknown) {
     workspaceSummary: report.workspaceSummary,
     gitSummary: report.gitSummary,
   };
+}
+
+export async function handleWorkspaceProjectMap(params: unknown) {
+  const path = stringParam(params, "path");
+  return { map: await projectMap(path) };
 }
 
 export async function handleWorkspaceSearch(params: unknown) {
@@ -121,6 +132,43 @@ export async function handleWorkspacePull(params: unknown) {
 export async function handleWorkspacePush(params: unknown) {
   const path = stringParam(params, "path");
   return { sync: await pushCommits(path) };
+}
+
+export async function handleWorkspaceTags(params: unknown) {
+  const path = stringParam(params, "path");
+  return { tags: await listTags(path) };
+}
+
+export async function handleWorkspaceCreateTag(params: unknown) {
+  const path = stringParam(params, "path");
+  const name = stringParam(params, "name");
+  const message = asRecord(params)?.message;
+  await createTag(
+    path,
+    name,
+    typeof message === "string" ? message : undefined,
+  );
+  return {};
+}
+
+export async function handleWorkspaceRevertCommit(params: unknown) {
+  const path = stringParam(params, "path");
+  const revision = stringParam(params, "revision");
+  await revertCommit(path, revision);
+  return {};
+}
+
+export async function handleWorkspaceStash(params: unknown) {
+  const path = stringParam(params, "path");
+  const message = asRecord(params)?.message;
+  await stashChanges(path, typeof message === "string" ? message : undefined);
+  return {};
+}
+
+export async function handleWorkspaceApplyStash(params: unknown) {
+  const path = stringParam(params, "path");
+  await applyLatestStash(path);
+  return {};
 }
 
 export async function handleWorkspaceDiscard(params: unknown) {

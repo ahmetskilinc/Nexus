@@ -12,13 +12,12 @@ import {
 } from "@nexus/providers";
 import type { CheckpointMetadata, CheckpointRecorder } from "@nexus/workspace";
 import type { ApprovalMailbox } from "./approvals";
+import { compactOnce } from "./compact";
 import {
+  DEFAULT_CONTEXT_TOKENS,
   extractSummary,
-  fold,
-  olderMessages,
   SUMMARY_INSTRUCTION,
   shouldCompact,
-  summaryInput,
 } from "./compaction";
 import type { ToolRunner } from "./tool-runner";
 
@@ -126,31 +125,27 @@ export async function runLoop(options: {
       );
     }
     if (shouldCompact(messages, options.contextTokens)) {
-      const older = olderMessages(messages);
-      if (older) {
-        try {
-          const summary = await summarizer.summarize(
-            options.fetchFn,
-            summaryInput(older),
-            runner.signal,
-          );
-          const folded = fold(messages, summary);
-          if (folded) {
-            const removed = messages.length - folded.length + 1;
-            messages = folded;
-            // The OpenAI response-id chain no longer matches the folded
-            // history; restart it from the rebuilt input on the next turn.
-            provider.noteCompaction();
-            runner.emitter.emit({
-              type: "compacted",
-              removedMessages: removed,
-              keptMessages: messages.length,
-              summary,
-            });
-          }
-        } catch {
-          // Non-fatal: continue uncompacted and retry later.
+      try {
+        const compaction = await compactOnce({
+          summarizer,
+          fetchFn: options.fetchFn,
+          messages,
+          signal: runner.signal,
+        });
+        if (compaction) {
+          messages = compaction.messages;
+          // The OpenAI response-id chain no longer matches the folded
+          // history; restart it from the rebuilt input on the next turn.
+          provider.noteCompaction();
+          runner.emitter.emit({
+            type: "compacted",
+            removedMessages: compaction.removedMessages,
+            keptMessages: compaction.keptMessages,
+            summary: compaction.summary,
+          });
         }
+      } catch {
+        // Non-fatal: continue uncompacted and retry later.
       }
     }
     const turn = await provider.turn(
@@ -160,6 +155,14 @@ export async function runLoop(options: {
       runner.signal,
     );
     usage = addUsage(usage, turn.usage);
+    // What this turn's request carried plus what it produced — i.e. what the
+    // next request will carry. This is the meter's reading, not the run's
+    // cumulative spend.
+    runner.emitter.emit({
+      type: "context",
+      usedTokens: turn.usage.inputTokens + turn.usage.outputTokens,
+      contextTokens: options.contextTokens ?? DEFAULT_CONTEXT_TOKENS,
+    });
     const { pricing } = options;
     if (
       options.maxRunCostUsd !== undefined &&

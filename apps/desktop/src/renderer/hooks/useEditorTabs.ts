@@ -33,13 +33,19 @@ export function useEditorTabs(
         patch: "",
         truncated: false,
         loading: true,
+        revision: (current[path]?.revision ?? 0) + 1,
       },
     }));
     try {
       const preview = await window.nexus.previewFile(path);
       setContents((current) => ({
         ...current,
-        [path]: { ...preview, patch: "", loading: false },
+        [path]: {
+          ...preview,
+          patch: "",
+          loading: false,
+          revision: current[path]?.revision ?? 1,
+        },
       }));
       void window.nexus.workspaceDiff(path).then((patch) => {
         setContents((current) =>
@@ -103,6 +109,16 @@ export function useEditorTabs(
     setActiveTabId(id);
   }
 
+  /// Re-read any open preview after an agent run or an external Git operation.
+  /// The revision token prevents a same-length file change from rendering stale
+  /// code in a syntax highlighter cache.
+  function refreshOpenFiles() {
+    for (const path of new Set(
+      tabs.flatMap((tab) => (tab.path ? [tab.path] : [])),
+    ))
+      void loadContent(path);
+  }
+
   function resetTabs() {
     setTabs([]);
     setActiveTabId(undefined);
@@ -118,6 +134,7 @@ export function useEditorTabs(
     newTab,
     closeTab,
     activateTab,
+    refreshOpenFiles,
     resetTabs,
   };
 }

@@ -32,6 +32,7 @@ import {
 } from "@nexus/tools";
 import { CheckpointRecorder, memoryPromptBlock } from "@nexus/workspace";
 import type { ApprovalMailbox } from "./approvals";
+import { type Compaction, compactOnce } from "./compact";
 import { augment, loadInstructionFile } from "./instructions";
 import { type RunResult, runLoop, Summarizer } from "./loop";
 import { type ApprovalMode, toolMode } from "./modes";
@@ -56,6 +57,16 @@ export type RunParams = {
   webAccess: boolean;
   mcpServers: McpServerConfig[];
   customInstructions?: string;
+};
+
+/// What compacting a history needs: which model to summarize with and how to
+/// authenticate. A strict subset of `RunParams`.
+export type CompactParams = {
+  providerId: string;
+  kind: ProviderKind;
+  model: string;
+  auth: AuthMethod;
+  history: AgentMessage[];
 };
 
 /// Credential access, injected by the runtime composition root so this
@@ -105,24 +116,60 @@ function assembleSchemas(
   return schemas;
 }
 
+/// Resolves the provider credential for a run or a compaction, from either
+/// the API-key store or the OAuth token store.
+async function resolveCredential(
+  credentials: CredentialResolver,
+  params: { providerId: string; kind: ProviderKind; auth: AuthMethod },
+): Promise<Credential> {
+  return params.auth === "api_key"
+    ? { kind: "api_key", apiKey: await credentials.apiKey(params.providerId) }
+    : {
+        kind: "oauth",
+        ...(await credentials.oauthToken(params.providerId, params.kind)),
+      };
+}
+
+/// Kimi's OAuth backend needs its device-fingerprint headers on every call;
+/// every other (provider, credential) pair needs none.
+async function deviceHeaders(
+  credentials: CredentialResolver,
+  kind: ProviderKind,
+  credential: Credential,
+): Promise<Headers | undefined> {
+  return kind === "Kimi" && credential.kind === "oauth"
+    ? await credentials.kimiDeviceHeaders()
+    : undefined;
+}
+
+/// Compacts a session's history on demand: one no-tools summarizer round-trip
+/// that folds the older turns into a summary. Undefined when there was nothing
+/// worth compacting. Unlike `run` this touches no workspace, tools, or MCP
+/// servers — it only needs a credential and the history.
+export async function compact(
+  deps: Pick<RunDeps, "fetchFn" | "credentials" | "signal">,
+  params: CompactParams,
+): Promise<Compaction | undefined> {
+  const credential = await resolveCredential(deps.credentials, params);
+  const summarizer = summarizerFor(
+    params,
+    credential,
+    await deviceHeaders(deps.credentials, params.kind, credential),
+  );
+  return await compactOnce({
+    summarizer,
+    fetchFn: deps.fetchFn,
+    messages: params.history,
+    signal: deps.signal,
+  });
+}
+
 export async function run(
   deps: RunDeps,
   params: RunParams,
   mailbox: ApprovalMailbox,
 ): Promise<RunResult> {
-  const credential: Credential =
-    params.auth === "api_key"
-      ? {
-          kind: "api_key",
-          apiKey: await deps.credentials.apiKey(params.providerId),
-        }
-      : {
-          kind: "oauth",
-          ...(await deps.credentials.oauthToken(
-            params.providerId,
-            params.kind,
-          )),
-        };
+  const credential = await resolveCredential(deps.credentials, params);
   let workspace: string;
   try {
     workspace = realpathSync(params.workspacePath);
@@ -142,10 +189,11 @@ export async function run(
     mode3 === "research" ? [] : params.mcpServers,
   );
   try {
-    const kimiHeaders =
-      params.kind === "Kimi" && credential.kind === "oauth"
-        ? await deps.credentials.kimiDeviceHeaders()
-        : undefined;
+    const kimiHeaders = await deviceHeaders(
+      deps.credentials,
+      params.kind,
+      credential,
+    );
     const subagent = new SubagentLauncher({
       kind: params.kind,
       model: params.model,
@@ -215,9 +263,87 @@ export async function run(
   }
 }
 
-/// The `(kind, credential)` dispatch into a concrete provider + summarizer.
 /// Kimi speaks the Anthropic Messages dialect on both endpoints; only the
 /// endpoint and auth headers differ per credential.
+function kimiTarget(
+  credential: Credential,
+  kimiHeaders: Headers | undefined,
+): [string, Headers] {
+  return credential.kind === "api_key"
+    ? [
+        KIMI_API_KEY_ENDPOINT,
+        [["Authorization", `Bearer ${credential.apiKey}`]],
+      ]
+    : [
+        KIMI_OAUTH_ENDPOINT,
+        [
+          ...(kimiHeaders ?? []),
+          ["Authorization", `Bearer ${credential.accessToken}`],
+        ],
+      ];
+}
+
+/// The `(kind, credential)` dispatch into the no-tools summarizer used for
+/// compaction. Split out from `buildProvider` because compacting on demand
+/// needs only this half — no tool schemas, no MCP hub, no system prompt.
+function summarizerFor(
+  params: { kind: ProviderKind; model: string },
+  credential: Credential,
+  kimiHeaders: Headers | undefined,
+): Summarizer {
+  if (params.kind === "Anthropic") {
+    if (credential.kind !== "api_key") throw RuntimeError.credentialMismatch();
+    return new Summarizer({
+      kind: "Anthropic",
+      model: params.model,
+      endpoint: MESSAGES_ENDPOINT,
+      headers: [
+        ["x-api-key", credential.apiKey],
+        ["anthropic-version", ANTHROPIC_VERSION],
+      ],
+      chatgptBackend: false,
+    });
+  }
+  if (params.kind === "Kimi") {
+    const [endpoint, headers] = kimiTarget(credential, kimiHeaders);
+    return new Summarizer({
+      kind: "Kimi",
+      model: params.model,
+      endpoint,
+      headers,
+      chatgptBackend: false,
+    });
+  }
+  // OpenAI: the summarizer hits the same endpoint with the same auth headers
+  // as the run's provider; only the API-key backend chains server-side.
+  if (credential.kind === "api_key") {
+    return new Summarizer({
+      kind: "OpenAI",
+      model: params.model,
+      endpoint: OPENAI_API_ENDPOINT,
+      headers: [["Authorization", `Bearer ${credential.apiKey}`]],
+      chatgptBackend: false,
+    });
+  }
+  const headers: Headers = [
+    ["Authorization", `Bearer ${credential.accessToken}`],
+    ["OpenAI-Beta", "responses=experimental"],
+    ["originator", "codex_cli_rs"],
+    ["session_id", crypto.randomUUID()],
+  ];
+  if (credential.accountId)
+    headers.push(["chatgpt-account-id", credential.accountId]);
+  return new Summarizer({
+    kind: "OpenAI",
+    model: params.model,
+    endpoint: CHATGPT_ENDPOINT,
+    headers,
+    chatgptBackend: true,
+  });
+}
+
+/// The `(kind, credential)` dispatch into a concrete provider, paired with the
+/// summarizer that compacts its conversation.
 function buildProvider(
   params: RunParams,
   credential: Credential,
@@ -226,12 +352,9 @@ function buildProvider(
   mode: ToolMode,
   kimiHeaders: Headers | undefined,
 ): { provider: Provider; summarizer: Summarizer } {
+  const summarizer = summarizerFor(params, credential, kimiHeaders);
   if (params.kind === "Anthropic") {
     if (credential.kind !== "api_key") throw RuntimeError.credentialMismatch();
-    const headers: Headers = [
-      ["x-api-key", credential.apiKey],
-      ["anthropic-version", ANTHROPIC_VERSION],
-    ];
     return {
       provider: AnthropicProvider.anthropic(
         params.model,
@@ -240,29 +363,11 @@ function buildProvider(
         credential.apiKey,
         assembleSchemas(params.webAccess, mode, hub, anthropicWrapSchema),
       ),
-      summarizer: new Summarizer({
-        kind: "Anthropic",
-        model: params.model,
-        endpoint: MESSAGES_ENDPOINT,
-        headers,
-        chatgptBackend: false,
-      }),
+      summarizer,
     };
   }
   if (params.kind === "Kimi") {
-    const [endpoint, headers]: [string, Headers] =
-      credential.kind === "api_key"
-        ? [
-            KIMI_API_KEY_ENDPOINT,
-            [["Authorization", `Bearer ${credential.apiKey}`]],
-          ]
-        : [
-            KIMI_OAUTH_ENDPOINT,
-            [
-              ...(kimiHeaders ?? []),
-              ["Authorization", `Bearer ${credential.accessToken}`],
-            ],
-          ];
+    const [endpoint, headers] = kimiTarget(credential, kimiHeaders);
     return {
       provider: new AnthropicProvider(
         "Kimi",
@@ -273,17 +378,9 @@ function buildProvider(
         headers,
         assembleSchemas(params.webAccess, mode, hub, anthropicWrapSchema),
       ),
-      summarizer: new Summarizer({
-        kind: "Kimi",
-        model: params.model,
-        endpoint,
-        headers,
-        chatgptBackend: false,
-      }),
+      summarizer,
     };
   }
-  // OpenAI: the summarizer hits the same endpoint with the same auth headers
-  // as the run's provider; only the API-key backend chains server-side.
   const schemas = assembleSchemas(
     params.webAccess,
     mode,
@@ -301,23 +398,9 @@ function buildProvider(
         params.history,
         schemas,
       ),
-      summarizer: new Summarizer({
-        kind: "OpenAI",
-        model: params.model,
-        endpoint: OPENAI_API_ENDPOINT,
-        headers: [["Authorization", `Bearer ${credential.apiKey}`]],
-        chatgptBackend: false,
-      }),
+      summarizer,
     };
   }
-  const headers: Headers = [
-    ["Authorization", `Bearer ${credential.accessToken}`],
-    ["OpenAI-Beta", "responses=experimental"],
-    ["originator", "codex_cli_rs"],
-    ["session_id", crypto.randomUUID()],
-  ];
-  if (credential.accountId)
-    headers.push(["chatgpt-account-id", credential.accountId]);
   return {
     provider: new OpenAiProvider(
       params.model,
@@ -332,12 +415,6 @@ function buildProvider(
       params.history,
       schemas,
     ),
-    summarizer: new Summarizer({
-      kind: "OpenAI",
-      model: params.model,
-      endpoint: CHATGPT_ENDPOINT,
-      headers,
-      chatgptBackend: true,
-    }),
+    summarizer,
   };
 }

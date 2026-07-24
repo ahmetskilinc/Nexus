@@ -162,6 +162,43 @@ describe("runLoop", () => {
     expect(result.checkpoint).toBeNull();
   });
 
+  test("each turn reports the context meter's reading", async () => {
+    const h = await harness();
+    const provider = new FakeProvider([
+      toolTurn("c1", "git_status", "{}", {
+        inputTokens: 100,
+        outputTokens: 20,
+      }),
+      textTurn("done", { inputTokens: 250, outputTokens: 40 }),
+    ]);
+    await runLoop({
+      ...loopDefaults(h),
+      provider,
+      messages: [],
+      contextTokens: 1000,
+    });
+    // Per turn, not cumulative: the meter shows what the *next* request will
+    // carry, so each reading replaces the last.
+    expect(
+      h.emitter.events.filter((event) => event.type === "context"),
+    ).toEqual([
+      { type: "context", usedTokens: 120, contextTokens: 1000 },
+      { type: "context", usedTokens: 290, contextTokens: 1000 },
+    ]);
+  });
+
+  test("an unknown context window falls back to the default", async () => {
+    const h = await harness();
+    await runLoop({
+      ...loopDefaults(h),
+      provider: new FakeProvider([textTurn("hi")]),
+      messages: [],
+    });
+    expect(
+      h.emitter.events.find((event) => event.type === "context"),
+    ).toMatchObject({ contextTokens: 200_000 });
+  });
+
   test("usage accumulates across turns", async () => {
     const h = await harness();
     const provider = new FakeProvider([

@@ -6,6 +6,8 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createId } from "../lib/format";
 import {
+  appendRunJournal,
+  applyCompaction,
   applyEvent,
   dedupeAttachments,
   finishRun,
@@ -28,8 +30,13 @@ type ActiveRuns = Record<string, ActiveRun>;
 /// The session-scoped agent-run API a chat pane consumes.
 export type AgentRunApi = {
   isRunning: (sessionId: string) => boolean;
+  /// True while a user-triggered compaction is in flight for this session.
+  isCompacting: (sessionId: string) => boolean;
   pendingApprovalFor: (sessionId: string) => PendingApproval | undefined;
   send: (sessionId: string, text: string, attachments?: string[]) => boolean;
+  /// Folds this session's older turns into a summary now, instead of waiting
+  /// for the automatic threshold. No-op while a run is in flight.
+  compact: (sessionId: string) => void;
   cancel: (sessionId: string) => void;
   respondToApproval: (sessionId: string, approved: boolean) => void;
   alwaysAllowCommand: (sessionId: string) => void;
@@ -42,17 +49,21 @@ export function useAgentRun({
   state,
   setState,
   setError,
+  onWorkspaceMutation,
 }: {
   state: AppState | undefined;
   setState: (
     updater: (current: AppState | undefined) => AppState | undefined,
   ) => void;
   setError: (error?: string) => void;
+  onWorkspaceMutation: () => void;
 }): AgentRunApi {
   const [activeRuns, setActiveRunsState] = useState<ActiveRuns>({});
   const [pendingApprovals, setPendingApprovals] = useState<
     Record<string, PendingApproval>
   >({});
+  // Sessions with a compaction round-trip in flight, keyed by session id.
+  const [compacting, setCompacting] = useState<Record<string, true>>({});
   // The event subscription is created once; the handlers read the live runs and
   // state through refs so they aren't stale without re-subscribing per render.
   const activeRunsRef = useRef<ActiveRuns>({});
@@ -116,6 +127,18 @@ export function useAgentRun({
           return;
         }
         if (event.type === "authorize_url") return;
+        if (
+          event.type === "tool_result" &&
+          [
+            "write_file",
+            "edit_file",
+            "create_file",
+            "delete_file",
+            "multi_edit",
+            "rename_file",
+          ].includes(event.name)
+        )
+          onWorkspaceMutation();
         const itemId = createId();
         const updatedAt = new Date().toISOString();
         setState(
@@ -151,6 +174,14 @@ export function useAgentRun({
             updateSession(current, run.sessionId, (session) => ({
               ...session,
               recovery: undefined,
+              runJournal: session.recovery
+                ? appendRunJournal(session.runJournal, {
+                    id: session.recovery.runId ?? "unknown",
+                    startedAt: session.recovery.startedAt,
+                    endedAt: updatedAt,
+                    status: cancelled ? "cancelled" : "failed",
+                  })
+                : session.runJournal,
               transcript: [...session.transcript, item],
               updatedAt,
             })),
@@ -160,7 +191,7 @@ export function useAgentRun({
     return () => {
       for (const cleanup of cleanups) cleanup();
     };
-  }, [setState, clearRun]);
+  }, [setState, clearRun, onWorkspaceMutation]);
 
   /// Starts a run for `sessionId` from `text` plus any @-mention `attachments`.
   /// Returns false when nothing was started (empty text and no attachments,
@@ -204,6 +235,11 @@ export function useAgentRun({
       transcript: [...item.transcript, userItem],
       history: [...item.history, { type: "user", text: historyText }],
       recovery: { startedAt: new Date().toISOString(), status: "in_progress" },
+      runJournal: appendRunJournal(item.runJournal, {
+        id: "pending",
+        startedAt: new Date().toISOString(),
+        status: "queued",
+      }),
     }));
     setState(() => updated);
     setError(undefined);
@@ -238,6 +274,18 @@ export function useAgentRun({
                 recovery: session.recovery
                   ? { ...session.recovery, runId }
                   : session.recovery,
+                runJournal: session.recovery
+                  ? appendRunJournal(
+                      session.runJournal?.filter(
+                        (entry) => entry.id !== "pending",
+                      ),
+                      {
+                        id: runId,
+                        startedAt: session.recovery.startedAt,
+                        status: "running",
+                      },
+                    )
+                  : session.runJournal,
               }))
             : appState,
         );
@@ -256,6 +304,48 @@ export function useAgentRun({
         );
       });
     return true;
+  }
+
+  /// Compacts on demand. Refused while a run is active (the run compacts its
+  /// own history and would overwrite ours on completion) and while a previous
+  /// compaction for this session is still in flight.
+  function compact(sessionId: string) {
+    if (!state || activeRunsRef.current[sessionId] || compacting[sessionId])
+      return;
+    const session = state.sessions.find((item) => item.id === sessionId);
+    const { providerId, model } = resolveModel(session, state);
+    if (!session || !providerId || !model || session.history.length === 0)
+      return;
+    setCompacting((current) => ({ ...current, [sessionId]: true }));
+    setError(undefined);
+    window.nexus
+      .compactSession({
+        providerId,
+        model,
+        workspacePath: session.workspacePath,
+        history: session.history,
+      })
+      .then((result) => {
+        if (!result.messages) {
+          setError("There is not enough history to compact yet.");
+          return;
+        }
+        const itemId = createId();
+        const updatedAt = new Date().toISOString();
+        setState(
+          (current) =>
+            current &&
+            applyCompaction(current, sessionId, result, itemId, updatedAt),
+        );
+      })
+      .catch((reason: unknown) =>
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : "Could not compact the conversation.",
+        ),
+      )
+      .finally(() => setCompacting(({ [sessionId]: _done, ...rest }) => rest));
   }
 
   function cancel(sessionId: string) {
@@ -300,8 +390,10 @@ export function useAgentRun({
 
   return {
     isRunning: (sessionId) => Boolean(activeRuns[sessionId]),
+    isCompacting: (sessionId) => Boolean(compacting[sessionId]),
     pendingApprovalFor: (sessionId) => pendingApprovals[sessionId],
     send,
+    compact,
     cancel,
     respondToApproval,
     alwaysAllowCommand,

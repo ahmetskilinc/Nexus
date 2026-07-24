@@ -30,6 +30,9 @@ export function ReviewPanel({
   onUnstageFiles,
   onCommit,
   onDiscardFile,
+  onRevertCommit,
+  onStash,
+  onApplyStash,
   sync,
   onFetch,
   onPull,
@@ -50,6 +53,9 @@ export function ReviewPanel({
   onUnstageFiles: (paths: string[]) => Promise<void>;
   onCommit: (message: string) => Promise<boolean>;
   onDiscardFile: (path: string) => Promise<void>;
+  onRevertCommit: (revision: string) => Promise<boolean>;
+  onStash: () => Promise<boolean>;
+  onApplyStash: () => Promise<boolean>;
   /// The checked-out branch's standing against its upstream.
   sync: BranchSync;
   onFetch: () => Promise<boolean>;
@@ -70,8 +76,11 @@ export function ReviewPanel({
 }) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [message, setMessage] = useState("");
+  const [revertRevision, setRevertRevision] = useState("");
   const [busy, setBusy] = useState(false);
-  const [syncing, setSyncing] = useState<"fetch" | "pull" | "push">();
+  const [syncing, setSyncing] = useState<
+    "fetch" | "pull" | "push" | "stash" | "apply"
+  >();
   const visible = useMemo(
     () => changes.filter((change) => change.status !== "ignored"),
     [changes],
@@ -127,7 +136,7 @@ export function ReviewPanel({
   }
 
   async function syncAction(
-    action: "fetch" | "pull" | "push",
+    action: "fetch" | "pull" | "push" | "stash" | "apply",
     invoke: () => Promise<boolean>,
   ) {
     if (syncing) return;
@@ -186,6 +195,32 @@ export function ReviewPanel({
             <span className="ml-1.5 text-faint">{visible.length}</span>
           ) : null}
         </span>
+        {visible.length > 0 ? (
+          <Hint
+            label="Stash all current changes, including untracked files"
+            side="bottom"
+          >
+            <button
+              type="button"
+              disabled={Boolean(syncing)}
+              onClick={() => void syncAction("stash", onStash)}
+              className="app-no-drag rounded px-2 py-1 text-[10px] font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground disabled:opacity-50"
+            >
+              {syncing === "stash" ? "Stashing…" : "Stash"}
+            </button>
+          </Hint>
+        ) : (
+          <Hint label="Apply the newest local Git stash" side="bottom">
+            <button
+              type="button"
+              disabled={Boolean(syncing)}
+              onClick={() => void syncAction("apply", onApplyStash)}
+              className="app-no-drag rounded px-2 py-1 text-[10px] font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground disabled:opacity-50"
+            >
+              {syncing === "apply" ? "Applying…" : "Apply stash"}
+            </button>
+          </Hint>
+        )}
         {canFetch ? (
           <Hint
             label="Fetch remote updates without changing your files"
@@ -419,6 +454,38 @@ export function ReviewPanel({
               >
                 Commit staged changes
               </button>
+            </section>
+
+            <section className="border-b border-border-soft px-3 py-3">
+              <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                Revert a commit
+              </span>
+              <p className="mt-1 text-[11px] leading-relaxed text-faint">
+                Creates a new inverse commit. Nexus refuses when local changes
+                exist and never rewrites history.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={revertRevision}
+                  onChange={(event) => setRevertRevision(event.target.value)}
+                  placeholder="Commit hash"
+                  spellCheck={false}
+                  className="min-w-0 flex-1 rounded-lg border border-border-soft bg-background px-2.5 py-1.5 font-mono text-[11px] text-foreground outline-none placeholder:text-faint focus:border-primary-dim"
+                />
+                <button
+                  type="button"
+                  disabled={busy || !revertRevision.trim()}
+                  onClick={() =>
+                    void run(async () => {
+                      if (await onRevertCommit(revertRevision.trim()))
+                        setRevertRevision("");
+                    })
+                  }
+                  className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-destructive transition hover:bg-destructive/10 disabled:opacity-50"
+                >
+                  Revert
+                </button>
+              </div>
             </section>
 
             <section>

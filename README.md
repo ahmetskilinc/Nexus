@@ -5,12 +5,13 @@ Local-first coding-agent prototype, written end-to-end in TypeScript as a Turbor
 The app can:
 
 - Select one repository workspace.
-- Connect providers with an OpenAI, Anthropic, or Kimi API key, or by signing in with a ChatGPT or Kimi account (OAuth); credentials are encrypted with Electron `safeStorage`.
+- Connect providers with an OpenAI, Anthropic, or Kimi API key, or by signing in with a ChatGPT or Kimi account (OAuth); credentials are encrypted with Electron `safeStorage`, requests go directly to that provider, and run budgets/retry status remain visible.
 - Run a real agent loop: the model explores the workspace with tools (`read_file`, `list_directory`, `grep`, `git_status`) until it can answer, with every tool call shown in the transcript.
 - Edit files and run shell commands, each gated by an approval card in Ask/Plan mode.
 - Hold a multi-turn conversation per task session, with cancel and "New task" to reset.
 - Browse a safe recursive file index that excludes common generated and dependency directories, and attach a file for the agent to read.
-- Open an integrated terminal, review changed files as diffs, and connect MCP servers.
+- Open an integrated terminal, review changed files as diffs, and test/inspect local stdio MCP servers before enabling them.
+- Navigate a workspace with Quick Open (`⌘/Ctrl+P`) and literal full-text search (`⌘/Ctrl+F`), then attach files, previews, search snippets, or dropped text/logs as editable agent context.
 
 Provider requests are made directly from the runtime to the provider; no credentials are sent to Nexus services because Nexus has no backend.
 
