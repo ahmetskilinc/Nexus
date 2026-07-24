@@ -19,7 +19,7 @@ Provider requests are made directly from the runtime to the provider; no credent
 
 Nexus is currently designed for individual developers. It is local-first: the selected workspace, application state, and encrypted credentials stay on the user's machine, while enabled provider, web, Git, and MCP features contact their configured external destinations directly. Nexus sends no analytics, crash reports, or diagnostic data to Nexus-operated services. Diagnostics will be manual local exports with secret redaction.
 
-macOS is the primary supported platform. Windows and Linux packaging targets are experimental until their CI release, installation, and update paths are implemented. Details and the architectural decisions that guide the production roadmap live in [`docs/adr`](docs/adr).
+macOS is the primary supported platform. Windows and Linux packaging targets are experimental until their CI release, installation, and update paths are implemented. Nexus has no in-app automatic updates. See [release and support policy](docs/releasing.md) and [`docs/adr`](docs/adr) for the production roadmap.
 
 ## Layout
 
@@ -92,11 +92,13 @@ Without a Developer ID, signing and notarization are skipped and the package rem
 
 ### Releases (GitHub Actions)
 
-`.github/workflows/release.yml` runs on every push to `main`: typecheck and
-tests always; when `apps/desktop/package.json` holds a version with no
-`v<version>` release yet, it also builds, signs, notarizes, and publishes the
-dmg to GitHub Releases — so bumping the version is what ships. Required
-repository secrets:
+`.github/workflows/release.yml` runs on every push to `main`: the full quality
+gate always runs; when `apps/desktop/package.json` holds a version with no
+`v<version>` release yet, it builds, signs, notarizes, verifies the downloadable
+DMG, generates a SHA-256 checksum, attests build provenance, and publishes the
+artifacts to GitHub Releases. See [`docs/releasing.md`](docs/releasing.md) for
+installation, verification, upgrade, and rollback guidance. Required repository
+secrets:
 
 - `CSC_LINK` — the Developer ID Application certificate as base64
   (`base64 -i certificate.p12 | pbcopy` after exporting it from Keychain

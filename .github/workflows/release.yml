@@ -10,6 +10,8 @@ on:
 
 permissions:
   contents: write
+  attestations: write
+  id-token: write
 
 concurrency:
   group: release
@@ -62,6 +64,22 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: bun run package
 
+      - name: Verify signed release artifact
+        if: steps.version.outputs.exists == 'false'
+        working-directory: apps/desktop
+        run: bun run verify:release
+
+      - name: Generate checksums
+        if: steps.version.outputs.exists == 'false'
+        working-directory: apps/desktop/release
+        run: shasum -a 256 Nexus-*.dmg > SHA256SUMS.txt
+
+      - name: Attest build provenance
+        if: steps.version.outputs.exists == 'false'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: apps/desktop/release/Nexus-*.dmg
+
       - name: Publish GitHub release
         if: steps.version.outputs.exists == 'false'
         env:
@@ -69,6 +87,7 @@ jobs:
         run: |
           gh release create "v${{ steps.version.outputs.version }}" \
             apps/desktop/release/Nexus-*.dmg \
+            apps/desktop/release/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --title "Nexus ${{ steps.version.outputs.version }}" \
             --generate-notes

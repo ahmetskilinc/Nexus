@@ -17,6 +17,7 @@
     "test": "bun test src",
     "topo": "true",
     "package": "bun run build && electron-builder",
+    "verify:release": "node scripts/verify-release.mjs",
     "icons": "node scripts/build-icons.mjs",
     "package:local": "bun run build && electron-builder --dir -c.mac.notarize=false -c.mac.identity=null"
   },
