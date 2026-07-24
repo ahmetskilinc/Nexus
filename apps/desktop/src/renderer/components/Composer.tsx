@@ -91,6 +91,9 @@ export function Composer({
   branch,
   branches,
   onSwitchBranch,
+  onCreateBranch,
+  onDeleteBranch,
+  onRenameBranch,
   atBottom,
   attachments,
   onAttachmentsChange,
@@ -110,6 +113,9 @@ export function Composer({
   branch?: string;
   branches: string[];
   onSwitchBranch: (name: string) => void;
+  onCreateBranch: (name: string) => Promise<boolean>;
+  onDeleteBranch: (name: string) => Promise<boolean>;
+  onRenameBranch: (from: string, to: string) => Promise<boolean>;
   atBottom: boolean;
   /// Workspace-relative paths attached via @-mentions, shown as chips.
   attachments: string[];
@@ -240,6 +246,9 @@ export function Composer({
                 branch={branch}
                 branches={branches}
                 onSwitch={onSwitchBranch}
+                onCreate={onCreateBranch}
+                onDelete={onDeleteBranch}
+                onRename={onRenameBranch}
               />
             ) : null}
             <Menu.Root>

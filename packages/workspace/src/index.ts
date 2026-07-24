@@ -18,10 +18,16 @@ export {
 export {
   branchSync,
   commitChanges,
+  createBranch,
+  deleteBranch,
   discardFile,
+  fetchRemotes,
   gitStatusSummary,
+  pullFastForward,
   pushCommits,
+  renameBranch,
   stageFiles,
+  switchBranch,
   unstageFiles,
   validateRelativePath,
   workspaceDiff,
@@ -39,5 +45,9 @@ export {
   memoryPromptBlock,
   saveMemory,
 } from "./memory";
+export {
+  searchWorkspaceText,
+  type WorkspaceTextMatch,
+} from "./search";
 export { naturalCompare } from "./natural-compare";
 export { workspaceChanges } from "./status";

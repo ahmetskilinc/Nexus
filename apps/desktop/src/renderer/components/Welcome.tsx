@@ -1,9 +1,11 @@
 import { m } from "motion/react";
+import { useState } from "react";
 import { popIn, transitions } from "../lib/motion";
 import { BrandMark } from "./BrandMark";
 import {
   CompassIcon,
   FolderIcon,
+  GitBranchIcon,
   MonitorIcon,
   ReviewIcon,
   WrenchIcon,
@@ -34,7 +36,37 @@ const FEATURES = [
   },
 ] as const;
 
-export function Welcome({ onChoose }: { onChoose: () => void }) {
+export function Welcome({
+  onChoose,
+  onClone,
+}: {
+  onChoose: () => Promise<boolean>;
+  onClone: (url: string) => Promise<boolean>;
+}) {
+  const [url, setUrl] = useState("");
+  const [cloning, setCloning] = useState(false);
+  const [cloneError, setCloneError] = useState<string>();
+
+  async function open() {
+    setCloneError(undefined);
+    if (!(await onChoose()))
+      setCloneError("Choose a Git repository to open in Nexus.");
+  }
+
+  async function clone() {
+    if (!url.trim() || cloning) return;
+    setCloning(true);
+    setCloneError(undefined);
+    try {
+      if (!(await onClone(url)))
+        setCloneError(
+          "Could not clone the repository. Check the URL and your Git credentials.",
+        );
+    } finally {
+      setCloning(false);
+    }
+  }
+
   return (
     <div className="relative flex h-full flex-col items-center justify-center overflow-hidden px-8">
       {/* Top strip stays draggable since this screen has no per-pane top bar. */}
@@ -80,14 +112,47 @@ export function Welcome({ onChoose }: { onChoose: () => void }) {
           ))}
         </ul>
 
-        <button
-          type="button"
-          onClick={onChoose}
-          className="app-no-drag mt-8 flex items-center gap-2 rounded-lg bg-primary px-5 py-3 text-[14px] font-semibold text-primary-foreground transition hover:bg-primary-soft"
+        <div className="app-no-drag mt-8 flex gap-2">
+          <button
+            type="button"
+            onClick={() => void open()}
+            className="flex items-center gap-2 rounded-lg bg-primary px-5 py-3 text-[14px] font-semibold text-primary-foreground transition hover:bg-primary-soft"
+          >
+            <FolderIcon size={17} />
+            Open a repository
+          </button>
+        </div>
+        <form
+          className="app-no-drag mt-3 w-full rounded-xl border border-border-soft bg-card/40 p-2 text-left"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void clone();
+          }}
         >
-          <FolderIcon size={17} />
-          Open a repository
-        </button>
+          <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground">
+            Clone a repository
+          </label>
+          <div className="flex gap-2">
+            <input
+              value={url}
+              onChange={(event) => setUrl(event.target.value)}
+              placeholder="https://github.com/org/repo.git"
+              spellCheck={false}
+              className="min-w-0 flex-1 rounded-lg border border-border-soft bg-background px-2.5 py-2 font-mono text-[11px] text-foreground outline-none placeholder:text-faint focus:border-primary-dim"
+            />
+            <button
+              type="submit"
+              disabled={cloning || !url.trim()}
+              className="flex items-center gap-1 rounded-lg bg-secondary px-3 py-2 text-[11px] font-semibold text-foreground transition hover:bg-accent disabled:opacity-50"
+            >
+              <GitBranchIcon size={13} />
+              {cloning ? "Cloning…" : "Clone"}
+            </button>
+          </div>
+          {cloneError ? (
+            <p className="mt-2 text-[11px] text-destructive">{cloneError}</p>
+          ) : null}
+        </form>
       </div>
     </div>
   );

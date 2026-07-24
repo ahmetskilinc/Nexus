@@ -25,6 +25,9 @@ export function ChatPane({
   branch,
   branches,
   onSwitchBranch,
+  onCreateBranch,
+  onDeleteBranch,
+  onRenameBranch,
   onOpenSettings,
   focused,
   onFocusPane,
@@ -43,6 +46,9 @@ export function ChatPane({
   branch?: string;
   branches: string[];
   onSwitchBranch: (name: string) => void;
+  onCreateBranch: (name: string) => Promise<boolean>;
+  onDeleteBranch: (name: string) => Promise<boolean>;
+  onRenameBranch: (from: string, to: string) => Promise<boolean>;
   onOpenSettings: () => void;
   /// Workspace file index for @-mention autocomplete, with a lazy loader.
   files: string[];
@@ -154,6 +160,9 @@ export function ChatPane({
           branch={sameWorkspace ? branch : undefined}
           branches={sameWorkspace ? branches : []}
           onSwitchBranch={onSwitchBranch}
+          onCreateBranch={onCreateBranch}
+          onDeleteBranch={onDeleteBranch}
+          onRenameBranch={onRenameBranch}
           atBottom={atBottom}
           attachments={attachments}
           onAttachmentsChange={setAttachments}

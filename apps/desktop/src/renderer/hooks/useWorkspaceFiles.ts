@@ -75,6 +75,52 @@ export function useWorkspaceFiles(
     };
   }, [workspacePath]);
 
+  async function createBranch(name: string): Promise<boolean> {
+    try {
+      const { branch: next } = await window.nexus.createBranch(name);
+      setBranch(next);
+      setFiles([]);
+      setChanges([]);
+      const branches = await window.nexus.listBranches();
+      setBranches(branches);
+      await Promise.all([refreshSync(), reloadFiles()]);
+      return true;
+    } catch (reason) {
+      reportError(
+        reason instanceof Error ? reason.message : "Could not create branch.",
+      );
+      return false;
+    }
+  }
+
+  async function renameBranch(from: string, to: string): Promise<boolean> {
+    try {
+      const { branch: next } = await window.nexus.renameBranch(from, to);
+      if (branch === from) setBranch(next);
+      setBranches(await window.nexus.listBranches());
+      await refreshSync();
+      return true;
+    } catch (reason) {
+      reportError(
+        reason instanceof Error ? reason.message : "Could not rename branch.",
+      );
+      return false;
+    }
+  }
+
+  async function deleteBranch(name: string): Promise<boolean> {
+    try {
+      await window.nexus.deleteBranch(name);
+      setBranches(await window.nexus.listBranches());
+      return true;
+    } catch (reason) {
+      reportError(
+        reason instanceof Error ? reason.message : "Could not delete branch.",
+      );
+      return false;
+    }
+  }
+
   async function switchBranch(name: string) {
     try {
       await window.nexus.switchBranch(name);
@@ -105,6 +151,32 @@ export function useWorkspaceFiles(
       setSync(await window.nexus.branchSync());
     } catch {
       setSync(NO_SYNC);
+    }
+  }
+
+  async function fetchRemotes(): Promise<boolean> {
+    try {
+      setSync(await window.nexus.fetchRemotes());
+      return true;
+    } catch (reason) {
+      reportError(
+        reason instanceof Error ? reason.message : "Could not fetch remotes.",
+      );
+      return false;
+    }
+  }
+
+  async function pullCommits(): Promise<boolean> {
+    try {
+      setSync(await window.nexus.pullCommits());
+      await reloadFiles();
+      return true;
+    } catch (reason) {
+      reportError(
+        reason instanceof Error ? reason.message : "Could not pull commits.",
+      );
+      await refreshSync();
+      return false;
     }
   }
 
@@ -235,6 +307,11 @@ export function useWorkspaceFiles(
     branches,
     sync,
     switchBranch,
+    createBranch,
+    renameBranch,
+    deleteBranch,
+    fetchRemotes,
+    pullCommits,
     pushCommits,
     refreshSync,
     stageFiles,

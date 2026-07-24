@@ -23,6 +23,19 @@ import { TerminalManager } from "./terminal";
 
 const execFileAsync = promisify(execFile);
 
+async function isGitRepository(workspace: string): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["rev-parse", "--is-inside-work-tree"],
+      { cwd: workspace, timeout: 3000 },
+    );
+    return stdout.trim() === "true";
+  } catch {
+    return false;
+  }
+}
+
 async function gitBranch(workspace: string) {
   try {
     const { stdout } = await execFileAsync(
@@ -229,7 +242,47 @@ function registerIpc() {
       properties: ["openDirectory", "createDirectory"],
     });
     if (result.canceled || !result.filePaths[0]) return undefined;
-    return realpath(result.filePaths[0]);
+    const workspace = await realpath(result.filePaths[0]);
+    if (!(await isGitRepository(workspace)))
+      throw new Error("Choose a Git repository, not an ordinary folder.");
+    return workspace;
+  });
+
+  ipcMain.handle("workspace:clone", async (_event, url: string) => {
+    const trimmed = url.trim();
+    if (!trimmed) throw new Error("A repository URL is required.");
+    // Git accepts local paths as clone sources too, but workspace onboarding
+    // deliberately accepts only SSH and HTTPS remotes. The URL remains one
+    // inert execFile argument, never shell text.
+    if (!/^(https:\/\/[^\s]+|git@[\w.-]+:[\w./-]+(?:\.git)?)$/.test(trimmed))
+      throw new Error("Enter a valid HTTPS or SSH repository URL.");
+    const destination = await dialog.showOpenDialog({
+      title: "Choose a folder for the cloned repository",
+      properties: ["openDirectory", "createDirectory"],
+    });
+    if (destination.canceled || !destination.filePaths[0]) return undefined;
+    const parent = await realpath(destination.filePaths[0]);
+    const name = trimmed
+      .replace(/\/$/, "")
+      .split(/[/:]/)
+      .at(-1)
+      ?.replace(/\.git$/, "");
+    if (!name || !/^[\w.-]+$/.test(name))
+      throw new Error("Could not determine a safe repository folder name.");
+    const target = path.join(parent, name);
+    try {
+      await execFileAsync("git", ["clone", "--", trimmed, target], {
+        timeout: 120_000,
+        env: { ...loginShellEnvironment(), GIT_TERMINAL_PROMPT: "0" },
+      });
+      const workspace = await realpath(target);
+      if (!(await isGitRepository(workspace)))
+        throw new Error("Git clone completed without creating a working tree.");
+      return workspace;
+    } catch (reason) {
+      const detail = reason instanceof Error ? reason.message : String(reason);
+      throw new Error(`Git could not clone this repository: ${detail}`);
+    }
   });
   ipcMain.handle("workspace:index", async () => {
     const state = store.snapshot();
@@ -268,6 +321,16 @@ function registerIpc() {
       truncated,
     };
   });
+  ipcMain.handle("workspace:search", async (_event, query: string) => {
+    const state = store.snapshot();
+    const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
+    const { response } = runtime.request("workspace.search", {
+      path: workspacePath,
+      query,
+    });
+    const result = await response;
+    return Array.isArray(result.matches) ? result.matches : [];
+  });
   ipcMain.handle("workspace:changes", async () => {
     const state = store.snapshot();
     const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
@@ -304,19 +367,43 @@ function registerIpc() {
       return [];
     }
   });
+  ipcMain.handle("workspace:create-branch", async (_event, name: string) => {
+    const state = store.snapshot();
+    const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
+    await runtime.request("workspace.createBranch", {
+      path: workspacePath,
+      name,
+    }).response;
+    return { branch: name };
+  });
+  ipcMain.handle(
+    "workspace:rename-branch",
+    async (_event, from: string, to: string) => {
+      const state = store.snapshot();
+      const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
+      await runtime.request("workspace.renameBranch", {
+        path: workspacePath,
+        from,
+        to,
+      }).response;
+      return { branch: to };
+    },
+  );
+  ipcMain.handle("workspace:delete-branch", async (_event, name: string) => {
+    const state = store.snapshot();
+    const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
+    await runtime.request("workspace.deleteBranch", {
+      path: workspacePath,
+      name,
+    }).response;
+  });
   ipcMain.handle("workspace:checkout", async (_event, name: string) => {
     const state = store.snapshot();
     if (!state.workspacePath) throw new Error("No workspace is selected.");
-    // Reject option-like (leading dash) refs so git can't treat the name as an
-    // option. execFile uses no shell, so with the leading dash barred the name
-    // is always a single, inert argv token. (`--` is not usable here: `git
-    // checkout -- <name>` means "restore this path", not "switch branch".)
-    if (!/^[\w./+-]+$/.test(name) || name.startsWith("-"))
-      throw new Error("Invalid branch name.");
-    await execFileAsync("git", ["checkout", name], {
-      cwd: state.workspacePath,
-      timeout: 8000,
-    });
+    await runtime.request("workspace.switchBranch", {
+      path: state.workspacePath,
+      name,
+    }).response;
     return { branch: name };
   });
   ipcMain.handle("workspace:diff", async (_event, relativePath: string) => {
@@ -355,6 +442,22 @@ function registerIpc() {
     const state = store.snapshot();
     const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
     const { response } = runtime.request("workspace.sync", {
+      path: workspacePath,
+    });
+    return (await response).sync;
+  });
+  ipcMain.handle("workspace:fetch", async () => {
+    const state = store.snapshot();
+    const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
+    const { response } = runtime.request("workspace.fetch", {
+      path: workspacePath,
+    });
+    return (await response).sync;
+  });
+  ipcMain.handle("workspace:pull", async () => {
+    const state = store.snapshot();
+    const workspacePath = requireWorkspace(state.workspacePath ?? "", state);
+    const { response } = runtime.request("workspace.pull", {
       path: workspacePath,
     });
     return (await response).sync;

@@ -17,6 +17,8 @@ const api = {
     ipcRenderer.invoke("state:save", state) as Promise<AppState>,
   chooseWorkspace: () =>
     ipcRenderer.invoke("workspace:choose") as Promise<string | undefined>,
+  cloneWorkspace: (url: string) =>
+    ipcRenderer.invoke("workspace:clone", url) as Promise<string | undefined>,
   indexWorkspace: () =>
     ipcRenderer.invoke("workspace:index") as Promise<string[]>,
   previewFile: (relativePath: string) =>
@@ -25,6 +27,10 @@ const api = {
       content: string;
       truncated: boolean;
     }>,
+  searchWorkspace: (query: string) =>
+    ipcRenderer.invoke("workspace:search", query) as Promise<
+      Array<{ path: string; line: number; text: string }>
+    >,
   workspaceChanges: () =>
     ipcRenderer.invoke("workspace:changes") as Promise<WorkspaceChange[]>,
   gitBranch: () =>
@@ -33,6 +39,16 @@ const api = {
     ipcRenderer.invoke("workspace:branches") as Promise<string[]>,
   switchBranch: (name: string) =>
     ipcRenderer.invoke("workspace:checkout", name) as Promise<{
+      branch: string;
+    }>,
+  createBranch: (name: string) =>
+    ipcRenderer.invoke("workspace:create-branch", name) as Promise<{
+      branch: string;
+    }>,
+  deleteBranch: (name: string) =>
+    ipcRenderer.invoke("workspace:delete-branch", name) as Promise<void>,
+  renameBranch: (from: string, to: string) =>
+    ipcRenderer.invoke("workspace:rename-branch", from, to) as Promise<{
       branch: string;
     }>,
   workspaceDiff: (relativePath: string) =>
@@ -46,6 +62,10 @@ const api = {
   discardFile: (relativePath: string) =>
     ipcRenderer.invoke("workspace:discard", relativePath) as Promise<void>,
   branchSync: () => ipcRenderer.invoke("workspace:sync") as Promise<BranchSync>,
+  fetchRemotes: () =>
+    ipcRenderer.invoke("workspace:fetch") as Promise<BranchSync>,
+  pullCommits: () =>
+    ipcRenderer.invoke("workspace:pull") as Promise<BranchSync>,
   pushCommits: () =>
     ipcRenderer.invoke("workspace:push") as Promise<BranchSync>,
   restoreCheckpoint: (checkpointId: string, paths?: string[]) =>

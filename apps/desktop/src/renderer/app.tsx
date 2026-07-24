@@ -29,6 +29,8 @@ import { TerminalPanel } from "./components/TerminalPanel";
 import { Hint, TooltipProvider } from "./components/Tooltip";
 import { TopBar } from "./components/TopBar";
 import { Welcome } from "./components/Welcome";
+import { QuickOpen } from "./components/QuickOpen";
+import { WorkspaceSearch } from "./components/WorkspaceSearch";
 import { useAgentRun } from "./hooks/useAgentRun";
 import { useEditorTabs } from "./hooks/useEditorTabs";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
@@ -70,6 +72,8 @@ export function App() {
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus>("checking");
   const [error, setError] = useState<string>();
   const [showSettings, setShowSettings] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [workspaceSearch, setWorkspaceSearch] = useState(false);
 
   // The single mutation funnel: leaves receive `apply` and named ops, never
   // the raw whole-state setter. Functional updates mean an op fired after an
@@ -90,6 +94,11 @@ export function App() {
     branches,
     sync,
     switchBranch,
+    createBranch,
+    renameBranch,
+    deleteBranch,
+    fetchRemotes,
+    pullCommits,
     pushCommits,
     stageFiles,
     unstageFiles,
@@ -153,11 +162,8 @@ export function App() {
     setRightOpen(false);
   }
 
-  const { chooseWorkspace, selectSession, createSession } = useSessions(
-    state,
-    apply,
-    resetWorkspaceView,
-  );
+  const { chooseWorkspace, cloneWorkspace, selectSession, createSession } =
+    useSessions(state, apply, resetWorkspaceView);
 
   useEffect(() => {
     void window.nexus.loadState().then(setState);
@@ -262,7 +268,19 @@ export function App() {
       openSettings: () => setShowSettings(true),
       toggleLeft: () => setLeftOpen((open) => !open),
       toggleRight,
-      closeOverlays: () => setShowSettings(false),
+      quickOpen: () => {
+        if (state?.workspacePath) {
+          void loadFiles().then(() => setQuickOpen(true));
+        }
+      },
+      workspaceSearch: () => {
+        if (state?.workspacePath) setWorkspaceSearch(true);
+      },
+      closeOverlays: () => {
+        setShowSettings(false);
+        setQuickOpen(false);
+        setWorkspaceSearch(false);
+      },
     }),
     Boolean(state),
   );
@@ -481,7 +499,10 @@ export function App() {
               <div className="relative flex min-h-0 flex-1 flex-col">
                 <ErrorBoundary>
                   {!hasWorkspace || !current ? (
-                    <Welcome onChoose={() => void chooseWorkspace()} />
+                    <Welcome
+                      onChoose={chooseWorkspace}
+                      onClone={cloneWorkspace}
+                    />
                   ) : (
                     <>
                       <div
@@ -517,6 +538,12 @@ export function App() {
                                 editor.resetTabs();
                                 void switchBranch(name);
                               }}
+                              onCreateBranch={(name) => {
+                                editor.resetTabs();
+                                return createBranch(name);
+                              }}
+                              onDeleteBranch={deleteBranch}
+                              onRenameBranch={renameBranch}
                               onOpenSettings={() => setShowSettings(true)}
                               focused={paneSession.id === current.id}
                               onFocusPane={
@@ -613,6 +640,8 @@ export function App() {
                   onCommit={commitChanges}
                   onDiscardFile={discardFile}
                   sync={sync}
+                  onFetch={fetchRemotes}
+                  onPull={pullCommits}
                   onPush={pushCommits}
                   canRestoreCheckpoint={Boolean(
                     current?.checkpoint && !current.checkpoint.restoredAt,
@@ -680,6 +709,18 @@ export function App() {
                 />
               ) : null}
             </AnimatePresence>
+
+            <QuickOpen
+              open={quickOpen}
+              files={files}
+              onOpenFile={editor.openFile}
+              onClose={() => setQuickOpen(false)}
+            />
+            <WorkspaceSearch
+              open={workspaceSearch}
+              onOpenFile={editor.openFile}
+              onClose={() => setWorkspaceSearch(false)}
+            />
 
             {/* Panel toggles pinned to the window corners — they never move,
               whether the sidebars are open or closed. New task pairs with the

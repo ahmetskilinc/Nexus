@@ -5,6 +5,8 @@ export type Shortcuts = {
   openSettings: () => void;
   toggleLeft: () => void;
   toggleRight: () => void;
+  quickOpen: () => void;
+  workspaceSearch: () => void;
   closeOverlays: () => void;
 };
 
@@ -33,6 +35,8 @@ export function useGlobalShortcuts(build: () => Shortcuts, enabled: boolean) {
       else if (key === ",") run(shortcuts.openSettings);
       else if (key === "b") run(shortcuts.toggleLeft);
       else if (key === "\\") run(shortcuts.toggleRight);
+      else if (key === "p") run(shortcuts.quickOpen);
+      else if (key === "f") run(shortcuts.workspaceSearch);
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

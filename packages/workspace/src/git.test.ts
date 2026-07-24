@@ -6,8 +6,13 @@ import * as path from "node:path";
 import {
   branchSync,
   commitChanges,
+  createBranch,
+  deleteBranch,
+  pullFastForward,
   pushCommits,
+  renameBranch,
   stageFiles,
+  switchBranch,
   unstageFiles,
   validateRelativePath,
 } from "./git";
@@ -93,6 +98,138 @@ test.skipIf(!gitAvailable)(
     await commitChanges(dir, "Edit note");
     expect((await branchSync(dir)).ahead).toBe(1);
     expect((await pushCommits(dir)).ahead).toBe(0);
+  },
+);
+
+test.skipIf(!gitAvailable)(
+  "createBranch validates and checks out a new branch",
+  async () => {
+    const dir = gitFixture();
+    fs.writeFileSync(path.join(dir, "note.txt"), "one\n");
+    await stageFiles(dir, ["note.txt"]);
+    await commitChanges(dir, "Initial commit");
+
+    await createBranch(dir, "feature/nexus");
+    expect((await branchSync(dir)).branch).toBe("feature/nexus");
+    await expect(createBranch(dir, "-unsafe")).rejects.toThrow(
+      "A valid branch name is required.",
+    );
+    await expect(createBranch(dir, "bad..branch")).rejects.toThrow(
+      "A valid branch name is required.",
+    );
+  },
+);
+
+test.skipIf(!gitAvailable)(
+  "renameBranch renames the checked-out branch",
+  async () => {
+    const dir = gitFixture();
+    fs.writeFileSync(path.join(dir, "note.txt"), "one\n");
+    await stageFiles(dir, ["note.txt"]);
+    await commitChanges(dir, "Initial commit");
+    const current = (await branchSync(dir)).branch;
+    if (!current) throw new Error("expected branch");
+    await renameBranch(dir, current, "renamed-main");
+    expect((await branchSync(dir)).branch).toBe("renamed-main");
+    await expect(
+      renameBranch(dir, "renamed-main", "bad..branch"),
+    ).rejects.toThrow("A valid branch name is required.");
+  },
+);
+
+test.skipIf(!gitAvailable)(
+  "deleteBranch refuses current but deletes merged branch",
+  async () => {
+    const dir = gitFixture();
+    fs.writeFileSync(path.join(dir, "note.txt"), "one\n");
+    await stageFiles(dir, ["note.txt"]);
+    await commitChanges(dir, "Initial commit");
+    const base = (await branchSync(dir)).branch;
+    if (!base) throw new Error("expected branch");
+    await createBranch(dir, "feature/nexus");
+    await switchBranch(dir, base);
+    await deleteBranch(dir, "feature/nexus");
+    await expect(deleteBranch(dir, base)).rejects.toThrow(
+      "Switch to another branch",
+    );
+  },
+);
+
+test.skipIf(!gitAvailable)(
+  "switchBranch refuses a dirty working tree",
+  async () => {
+    const dir = gitFixture();
+    fs.writeFileSync(path.join(dir, "note.txt"), "one\n");
+    await stageFiles(dir, ["note.txt"]);
+    await commitChanges(dir, "Initial commit");
+    await createBranch(dir, "feature/nexus");
+    fs.writeFileSync(path.join(dir, "note.txt"), "local edit\n");
+    await expect(switchBranch(dir, "master")).rejects.toThrow(
+      "working tree has changes",
+    );
+    expect((await branchSync(dir)).branch).toBe("feature/nexus");
+  },
+);
+
+test.skipIf(!gitAvailable)(
+  "pullFastForward refuses a dirty working tree",
+  async () => {
+    const dir = gitFixture();
+    fs.writeFileSync(path.join(dir, "note.txt"), "one\n");
+    await stageFiles(dir, ["note.txt"]);
+    await commitChanges(dir, "Initial commit");
+    const remote = fs.mkdtempSync(
+      path.join(os.tmpdir(), "nexus-git-pull-remote-"),
+    );
+    created.push(remote);
+    execFileSync("git", ["init", "-q", "--bare", remote], { stdio: "ignore" });
+    execFileSync("git", ["remote", "add", "origin", remote], {
+      cwd: dir,
+      stdio: "ignore",
+    });
+    await pushCommits(dir);
+    fs.writeFileSync(path.join(dir, "note.txt"), "local edit\n");
+    await expect(pullFastForward(dir)).rejects.toThrow(
+      "working tree has changes",
+    );
+  },
+);
+
+test.skipIf(!gitAvailable)(
+  "pullFastForward updates a clean branch",
+  async () => {
+    const dir = gitFixture();
+    fs.writeFileSync(path.join(dir, "note.txt"), "one\n");
+    await stageFiles(dir, ["note.txt"]);
+    await commitChanges(dir, "Initial commit");
+    const remote = fs.mkdtempSync(
+      path.join(os.tmpdir(), "nexus-git-pull-success-"),
+    );
+    created.push(remote);
+    execFileSync("git", ["init", "-q", "--bare", remote], { stdio: "ignore" });
+    execFileSync("git", ["remote", "add", "origin", remote], {
+      cwd: dir,
+      stdio: "ignore",
+    });
+    await pushCommits(dir);
+
+    const peer = fs.mkdtempSync(path.join(os.tmpdir(), "nexus-git-pull-peer-"));
+    created.push(peer);
+    execFileSync("git", ["clone", "-q", remote, peer], { stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "nexus@example.test"], {
+      cwd: peer,
+    });
+    execFileSync("git", ["config", "user.name", "Nexus Test"], { cwd: peer });
+    fs.writeFileSync(path.join(peer, "remote.txt"), "from remote\n");
+    execFileSync("git", ["add", "remote.txt"], { cwd: peer });
+    execFileSync("git", ["commit", "-m", "Remote change"], { cwd: peer });
+    execFileSync("git", ["push", "-q"], { cwd: peer });
+
+    const sync = await pullFastForward(dir);
+    expect(sync.behind).toBe(0);
+    expect(fs.readFileSync(path.join(dir, "remote.txt"), "utf8")).toBe(
+      "from remote\n",
+    );
   },
 );
 

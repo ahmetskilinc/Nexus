@@ -27,10 +27,18 @@ test("index skips hidden and generated directories", async () => {
   fs.writeFileSync(path.join(dir, "src/main.rs"), "fn main() {}");
   fs.writeFileSync(path.join(dir, "node_modules/pkg/index.js"), "x");
   fs.writeFileSync(path.join(dir, ".hidden"), "x");
+  fs.mkdirSync(path.join(dir, ".github"), { recursive: true });
+  fs.writeFileSync(path.join(dir, ".github/workflows.yml"), "x");
+  fs.writeFileSync(path.join(dir, ".env.example"), "TOKEN=");
   fs.writeFileSync(path.join(dir, "README.md"), "x");
 
   const files = await indexWorkspace(dir);
-  expect(files).toEqual(["README.md", "src/main.rs"]);
+  expect(files).toEqual([
+    ".env.example",
+    ".github/workflows.yml",
+    "README.md",
+    "src/main.rs",
+  ]);
 });
 
 test("inspect summarizes visible root entries", async () => {

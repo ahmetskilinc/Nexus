@@ -31,6 +31,8 @@ export function ReviewPanel({
   onCommit,
   onDiscardFile,
   sync,
+  onFetch,
+  onPull,
   onPush,
   canRestoreCheckpoint,
   checkpointFiles,
@@ -50,6 +52,8 @@ export function ReviewPanel({
   onDiscardFile: (path: string) => Promise<void>;
   /// The checked-out branch's standing against its upstream.
   sync: BranchSync;
+  onFetch: () => Promise<boolean>;
+  onPull: () => Promise<boolean>;
   onPush: () => Promise<boolean>;
   canRestoreCheckpoint: boolean;
   /// Files still revertible from the last run's checkpoint (empty when none).
@@ -67,13 +71,14 @@ export function ReviewPanel({
   const [entries, setEntries] = useState<Entry[]>([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [pushing, setPushing] = useState(false);
+  const [syncing, setSyncing] = useState<"fetch" | "pull" | "push">();
   const visible = useMemo(
     () => changes.filter((change) => change.status !== "ignored"),
     [changes],
   );
   const staged = visible.filter((change) => change.staged);
   const unstaged = visible.filter((change) => change.unstaged);
+  const conflicts = visible.filter((change) => change.status === "conflicted");
   const paths = useMemo(
     () => Array.from(new Set(visible.map((change) => change.path))),
     [visible],
@@ -121,13 +126,16 @@ export function ReviewPanel({
     }
   }
 
-  async function push() {
-    if (pushing) return;
-    setPushing(true);
+  async function syncAction(
+    action: "fetch" | "pull" | "push",
+    invoke: () => Promise<boolean>,
+  ) {
+    if (syncing) return;
+    setSyncing(action);
     try {
-      await onPush();
+      await invoke();
     } finally {
-      setPushing(false);
+      setSyncing(undefined);
     }
   }
 
@@ -136,6 +144,8 @@ export function ReviewPanel({
   const publishing = sync.branch !== null && sync.upstream === null;
   const canPush =
     sync.hasRemote && sync.branch !== null && (publishing || sync.ahead > 0);
+  const canFetch = sync.hasRemote;
+  const canPull = sync.upstream !== null && sync.behind > 0;
   const pushHint = publishing
     ? `Publish ${sync.branch} to the remote and track it`
     : `Push ${sync.ahead} commit${sync.ahead === 1 ? "" : "s"} to ${sync.upstream}` +
@@ -176,16 +186,46 @@ export function ReviewPanel({
             <span className="ml-1.5 text-faint">{visible.length}</span>
           ) : null}
         </span>
+        {canFetch ? (
+          <Hint
+            label="Fetch remote updates without changing your files"
+            side="bottom"
+          >
+            <button
+              type="button"
+              disabled={Boolean(syncing)}
+              onClick={() => void syncAction("fetch", onFetch)}
+              className="app-no-drag rounded px-2 py-1 text-[10px] font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground disabled:opacity-50"
+            >
+              {syncing === "fetch" ? "Fetching…" : "Fetch"}
+            </button>
+          </Hint>
+        ) : null}
+        {canPull ? (
+          <Hint
+            label={`Fast-forward ${sync.behind} remote commit${sync.behind === 1 ? "" : "s"}; Nexus refuses when your working tree has changes.`}
+            side="bottom"
+          >
+            <button
+              type="button"
+              disabled={Boolean(syncing)}
+              onClick={() => void syncAction("pull", onPull)}
+              className="app-no-drag rounded bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary-soft transition hover:bg-primary/20 disabled:opacity-50"
+            >
+              {syncing === "pull" ? "Pulling…" : `Pull ${sync.behind}`}
+            </button>
+          </Hint>
+        ) : null}
         {canPush ? (
           <Hint label={pushHint} side="bottom">
             <button
               type="button"
-              disabled={pushing}
-              onClick={() => void push()}
+              disabled={Boolean(syncing)}
+              onClick={() => void syncAction("push", onPush)}
               className="app-no-drag flex shrink-0 items-center gap-1 rounded bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary-soft transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <UploadIcon size={11} />
-              {pushing
+              {syncing === "push"
                 ? "Pushing…"
                 : publishing
                   ? "Publish"
@@ -215,6 +255,29 @@ export function ReviewPanel({
       </div>
 
       <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
+        {sync.ahead > 0 && sync.behind > 0 ? (
+          <section className="border-b border-warning/30 bg-warning/10 px-3 py-2.5">
+            <p className="text-[11px] font-semibold text-foreground">
+              Branch histories diverged
+            </p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+              Fetch is safe, but Nexus will not merge or rebase automatically.
+              Resolve the divergence in your preferred Git tool, then refresh.
+            </p>
+          </section>
+        ) : null}
+        {conflicts.length > 0 ? (
+          <section className="border-b border-destructive/30 bg-destructive/10 px-3 py-2.5">
+            <p className="text-[11px] font-semibold text-foreground">
+              {conflicts.length} conflicted file
+              {conflicts.length === 1 ? "" : "s"}
+            </p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+              Resolve conflict markers in your Git editor, stage the resolved
+              files, and commit when ready. Nexus will not overwrite them.
+            </p>
+          </section>
+        ) : null}
         {checkpointFiles.length > 0 ? (
           <section className="border-b border-border-soft">
             <div className="flex items-center gap-2 px-3 py-2">

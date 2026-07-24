@@ -86,6 +86,113 @@ async function gitAction(
   throw RuntimeError.msg(detail === "" ? failure : detail);
 }
 
+/// Switches to an existing local branch after refusing a dirty tree. A checkout
+/// must not silently carry edits into another branch or trigger Git conflict
+/// resolution outside the user's review flow.
+export async function switchBranch(
+  workspace: string,
+  name: string,
+): Promise<void> {
+  const trimmed = name.trim();
+  if (trimmed === "" || trimmed.startsWith("-")) {
+    throw RuntimeError.msg("A valid branch name is required.");
+  }
+  if (await hasWorkingTreeChanges(workspace)) {
+    throw RuntimeError.msg(
+      "Your working tree has changes. Commit, stash, or discard them before switching branches.",
+    );
+  }
+  await gitAction(
+    workspace,
+    ["switch", trimmed],
+    "Git could not switch branches.",
+  );
+}
+
+/// Creates and checks out a new local branch. Git validates its ref syntax;
+/// the leading-dash guard prevents a branch name becoming an option argument.
+export async function createBranch(
+  workspace: string,
+  name: string,
+): Promise<void> {
+  const trimmed = name.trim();
+  if (trimmed === "" || trimmed.startsWith("-")) {
+    throw RuntimeError.msg("A valid branch name is required.");
+  }
+  const checked = await runGit(workspace, [
+    "check-ref-format",
+    "--branch",
+    trimmed,
+  ]);
+  if (!checked.success) {
+    throw RuntimeError.msg("A valid branch name is required.");
+  }
+  if (await hasWorkingTreeChanges(workspace)) {
+    throw RuntimeError.msg(
+      "Your working tree has changes. Commit, stash, or discard them before creating a branch.",
+    );
+  }
+  await gitAction(
+    workspace,
+    ["switch", "--create", trimmed],
+    "Git could not create the branch.",
+  );
+}
+
+/// Renames a local branch. The source must exist; ref validation prevents the
+/// destination from being interpreted as an option or malformed ref.
+export async function renameBranch(
+  workspace: string,
+  from: string,
+  to: string,
+): Promise<void> {
+  const source = from.trim();
+  const destination = to.trim();
+  if (
+    !source ||
+    source.startsWith("-") ||
+    !destination ||
+    destination.startsWith("-")
+  )
+    throw RuntimeError.msg("A valid branch name is required.");
+  const checked = await runGit(workspace, [
+    "check-ref-format",
+    "--branch",
+    destination,
+  ]);
+  if (!checked.success)
+    throw RuntimeError.msg("A valid branch name is required.");
+  await gitAction(
+    workspace,
+    ["branch", "--move", source, destination],
+    "Git could not rename the branch.",
+  );
+}
+
+/// Deletes a fully merged local branch. The checked-out branch and branches
+/// with unmerged work are refused by Git's `-d` safeguard; force deletion is
+/// intentionally not exposed because it can discard commits.
+export async function deleteBranch(
+  workspace: string,
+  name: string,
+): Promise<void> {
+  const trimmed = name.trim();
+  if (trimmed === "" || trimmed.startsWith("-")) {
+    throw RuntimeError.msg("A valid branch name is required.");
+  }
+  const current = await branchSync(workspace);
+  if (current.branch === trimmed) {
+    throw RuntimeError.msg(
+      "Switch to another branch before deleting this branch.",
+    );
+  }
+  await gitAction(
+    workspace,
+    ["branch", "--delete", trimmed],
+    "Git could not delete the branch. It may contain unmerged commits.",
+  );
+}
+
 export async function stageFiles(
   workspace: string,
   paths: string[],
@@ -175,6 +282,57 @@ export async function branchSync(workspace: string): Promise<BranchSync> {
 
 /// Pushes the checked-out branch, publishing it when it has no upstream yet.
 /// Returns the sync state afterwards so the caller can render the new counts.
+async function hasWorkingTreeChanges(workspace: string): Promise<boolean> {
+  const output = await runGit(workspace, ["status", "--porcelain=v1", "-z"], {
+    timeoutMs: 5000,
+  });
+  return output.success && output.stdout.length > 0;
+}
+
+/// Fetches the configured remotes without merging into the working branch.
+/// Git and SSH prompts are disabled because this process has no terminal.
+export async function fetchRemotes(workspace: string): Promise<BranchSync> {
+  const remotes = await remoteNames(workspace);
+  if (remotes.length === 0) {
+    throw RuntimeError.msg("This repository has no remote to fetch from.");
+  }
+  await gitAction(
+    workspace,
+    ["fetch", "--prune", "--all"],
+    "Git could not fetch.",
+    {
+      timeoutMs: 120_000,
+      env: { GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" },
+    },
+  );
+  return branchSync(workspace);
+}
+
+/// Fast-forwards the current branch from its upstream after refusing a dirty
+/// tree. Divergent histories deliberately fail rather than creating a merge
+/// commit: the user can inspect/rebase/merge in their preferred Git tool.
+export async function pullFastForward(workspace: string): Promise<BranchSync> {
+  const sync = await branchSync(workspace);
+  if (!sync.branch || !sync.upstream) {
+    throw RuntimeError.msg("This branch has no upstream to pull from.");
+  }
+  if (await hasWorkingTreeChanges(workspace)) {
+    throw RuntimeError.msg(
+      "Your working tree has changes. Commit, stash, or discard them before pulling.",
+    );
+  }
+  await gitAction(
+    workspace,
+    ["pull", "--ff-only"],
+    "Git could not fast-forward this branch. Resolve divergent history before pulling.",
+    {
+      timeoutMs: 120_000,
+      env: { GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" },
+    },
+  );
+  return branchSync(workspace);
+}
+
 export async function pushCommits(workspace: string): Promise<BranchSync> {
   const sync = await branchSync(workspace);
   if (!sync.branch) {

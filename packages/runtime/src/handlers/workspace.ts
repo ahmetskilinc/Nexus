@@ -3,14 +3,21 @@ import { asRecord, RuntimeError } from "@nexus/protocol";
 import {
   branchSync,
   commitChanges,
+  createBranch,
+  deleteBranch,
   discardFile,
+  fetchRemotes,
   indexWorkspace,
   inspectWorkspace,
   listMemories,
+  pullFastForward,
   pushCommits,
+  renameBranch,
   restoreCheckpoint,
   restoreLatestMutation,
+  searchWorkspaceText,
   stageFiles,
+  switchBranch,
   unstageFiles,
   workspaceChanges,
   workspaceDiff,
@@ -31,6 +38,12 @@ export async function handleWorkspaceInspect(params: unknown) {
   };
 }
 
+export async function handleWorkspaceSearch(params: unknown) {
+  const path = stringParam(params, "path");
+  const query = stringParam(params, "query");
+  return { matches: await searchWorkspaceText(path, query) };
+}
+
 export async function handleWorkspaceChanges(params: unknown) {
   const path = stringParam(params, "path");
   return { changes: await workspaceChanges(path) };
@@ -40,6 +53,35 @@ export async function handleWorkspaceDiff(params: unknown) {
   const path = stringParam(params, "path");
   const relativePath = stringParam(params, "relativePath");
   return { patch: await workspaceDiff(path, relativePath) };
+}
+
+export async function handleWorkspaceSwitchBranch(params: unknown) {
+  const path = stringParam(params, "path");
+  const name = stringParam(params, "name");
+  await switchBranch(path, name);
+  return {};
+}
+
+export async function handleWorkspaceCreateBranch(params: unknown) {
+  const path = stringParam(params, "path");
+  const name = stringParam(params, "name");
+  await createBranch(path, name);
+  return {};
+}
+
+export async function handleWorkspaceRenameBranch(params: unknown) {
+  const path = stringParam(params, "path");
+  const from = stringParam(params, "from");
+  const to = stringParam(params, "to");
+  await renameBranch(path, from, to);
+  return {};
+}
+
+export async function handleWorkspaceDeleteBranch(params: unknown) {
+  const path = stringParam(params, "path");
+  const name = stringParam(params, "name");
+  await deleteBranch(path, name);
+  return {};
 }
 
 export async function handleWorkspaceStage(params: unknown) {
@@ -64,6 +106,16 @@ export async function handleWorkspaceCommit(params: unknown) {
 export async function handleWorkspaceSync(params: unknown) {
   const path = stringParam(params, "path");
   return { sync: await branchSync(path) };
+}
+
+export async function handleWorkspaceFetch(params: unknown) {
+  const path = stringParam(params, "path");
+  return { sync: await fetchRemotes(path) };
+}
+
+export async function handleWorkspacePull(params: unknown) {
+  const path = stringParam(params, "path");
+  return { sync: await pullFastForward(path) };
 }
 
 export async function handleWorkspacePush(params: unknown) {

@@ -14,11 +14,32 @@ export function useSessions(
   apply: (op: AppOp) => void,
   resetView: () => void,
 ) {
-  async function chooseWorkspace() {
-    const nextPath = await window.nexus.chooseWorkspace();
-    if (!nextPath || !state) return;
+  function openNewWorkspace(nextPath: string) {
+    if (!state) return;
     apply(openWorkspace(nextPath, newSession(nextPath)));
     resetView();
+  }
+
+  async function chooseWorkspace(): Promise<boolean> {
+    try {
+      const nextPath = await window.nexus.chooseWorkspace();
+      if (!nextPath) return false;
+      openNewWorkspace(nextPath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function cloneWorkspace(url: string): Promise<boolean> {
+    try {
+      const nextPath = await window.nexus.cloneWorkspace(url);
+      if (!nextPath) return false;
+      openNewWorkspace(nextPath);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   function select(id: string) {
@@ -38,5 +59,10 @@ export function useSessions(
     apply(addSession(newSession(state.workspacePath)));
   }
 
-  return { chooseWorkspace, selectSession: select, createSession };
+  return {
+    chooseWorkspace,
+    cloneWorkspace,
+    selectSession: select,
+    createSession,
+  };
 }

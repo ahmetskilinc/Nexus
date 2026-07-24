@@ -36,12 +36,19 @@ import {
   handleContextPreview,
   handleWorkspaceChanges,
   handleWorkspaceCommit,
+  handleWorkspaceCreateBranch,
   handleWorkspaceDiff,
   handleWorkspaceDiscard,
+  handleWorkspaceDeleteBranch,
+  handleWorkspaceFetch,
   handleWorkspaceIndex,
   handleWorkspaceInspect,
+  handleWorkspaceSearch,
+  handleWorkspacePull,
   handleWorkspacePush,
+  handleWorkspaceRenameBranch,
   handleWorkspaceStage,
+  handleWorkspaceSwitchBranch,
   handleWorkspaceSync,
   handleWorkspaceUnstage,
 } from "./handlers/workspace";
@@ -106,10 +113,20 @@ export class NexusCore implements RuntimeCore {
         return handleWorkspaceIndex(params);
       case "workspace.inspect":
         return handleWorkspaceInspect(params);
+      case "workspace.search":
+        return handleWorkspaceSearch(params);
       case "workspace.changes":
         return handleWorkspaceChanges(params);
       case "workspace.diff":
         return handleWorkspaceDiff(params);
+      case "workspace.createBranch":
+        return handleWorkspaceCreateBranch(params);
+      case "workspace.switchBranch":
+        return handleWorkspaceSwitchBranch(params);
+      case "workspace.deleteBranch":
+        return handleWorkspaceDeleteBranch(params);
+      case "workspace.renameBranch":
+        return handleWorkspaceRenameBranch(params);
       case "workspace.stage":
         return handleWorkspaceStage(params);
       case "workspace.unstage":
@@ -120,6 +137,10 @@ export class NexusCore implements RuntimeCore {
         return handleWorkspaceDiscard(params);
       case "workspace.sync":
         return handleWorkspaceSync(params);
+      case "workspace.fetch":
+        return handleWorkspaceFetch(params);
+      case "workspace.pull":
+        return handleWorkspacePull(params);
       case "workspace.push":
         return handleWorkspacePush(params);
       case "checkpoint.restore":

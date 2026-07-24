@@ -12,6 +12,23 @@ const SKIPPED_DIRECTORIES = new Set([
   "Pods",
 ]);
 
+/// Hidden repository configuration is valuable agent context (.github,
+/// .vscode, .env.example), while secrets and VCS internals must remain hidden.
+/// This allowlist is used by the file UI only; workspace tools still enforce
+/// their own containment and callers explicitly choose what to read.
+const INCLUDED_HIDDEN_NAMES = new Set([
+  ".github",
+  ".vscode",
+  ".nexus.md",
+  "AGENTS.md",
+  "CLAUDE.md",
+  ".env.example",
+]);
+
+function shouldInclude(name: string): boolean {
+  return !name.startsWith(".") || INCLUDED_HIDDEN_NAMES.has(name);
+}
+
 /// Recursively lists workspace-relative file paths, skipping hidden entries
 /// and common generated/dependency directories — same rules as the Swift index.
 export async function indexWorkspace(workspace: string): Promise<string[]> {
@@ -31,7 +48,7 @@ async function collectFiles(
   });
   for (const child of children) {
     const name = child.name;
-    if (name.startsWith(".")) continue;
+    if (!shouldInclude(name)) continue;
     const relativePath = relative === "" ? name : `${relative}/${name}`;
     if (child.isDirectory()) {
       if (SKIPPED_DIRECTORIES.has(name)) continue;
